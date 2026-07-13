@@ -1,0 +1,1 @@
+export function Brand({light=false}:{light?:boolean}){return <div className="brand"><div className="brandMark"><b>NOTARÍA</b><strong>TORRES</strong><span>ZEVALLOS</span></div>{!light&&<div><b>SIGADN</b><small>Notaría Torres Zevallos</small></div>}</div>}

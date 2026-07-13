@@ -1,0 +1,1 @@
+.realViewerBody{grid-template-columns:1fr 270px}.realCanvas{padding:18px;display:flex;align-items:flex-start;justify-content:center}.realCanvas iframe{height:calc(100vh - 150px);border:0;background:white;transform-origin:top center;box-shadow:0 4px 18px #a9a59d}.viewerEmpty{padding:30px;display:flex;align-items:flex-start;gap:18px}.viewerEmpty p{margin-top:10px}

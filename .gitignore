@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+server/usersApi.js
+server/usersApi.d.ts
+server/profileApi.js
+server/profileApi.d.ts
+server/data/*.json
+.env
+.env.*
+!.env.example

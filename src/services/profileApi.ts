@@ -1,0 +1,5 @@
+import type {Role} from '../data/roles';
+export type Profile={id:string,fullName:string,username:string,email:string,phone:string,avatar:string,role:Role,status:'Activo'|'Inactivo'|'Bloqueado'|'Pendiente de activación',lastAccess:string,createdAt:string};
+function headers(){return{'Content-Type':'application/json','X-SIGADN-USER':localStorage.getItem('sigadn-username')??'Usuario local','X-SIGADN-ROLE':localStorage.getItem('sigadn-role')??'Notario'}}
+async function request<T>(options:RequestInit={}){const response=await fetch('/api/profile',{...options,headers:{...headers(),...options.headers}});const data=await response.json() as unknown;if(!response.ok){const message=typeof data==='object'&&data!==null&&'error' in data?String((data as {error:unknown}).error):'No fue posible completar la operación.';throw new Error(message)}return data as T}
+export const profileApi={get:()=>request<Profile>(),update:(changes:Pick<Profile,'fullName'|'email'|'phone'>)=>request<Profile>({method:'PATCH',body:JSON.stringify(changes)})};
