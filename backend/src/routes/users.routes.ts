@@ -1,0 +1,20 @@
+import {Role} from '@prisma/client';
+import {Router} from 'express';
+import {activateUser,blockUser,changeRole,createUser,deactivateUser,deleteUser,getUser,listUsers,rejectUser,resetPassword,unblockUser,updateUser} from '../controllers/users.controller.js';
+import {authenticate,requireRoles} from '../middlewares/auth.middleware.js';
+import {asyncHandler} from '../utils/http.js';
+
+export const usersRouter=Router();
+usersRouter.use(authenticate,requireRoles(Role.NOTARIO,Role.ADMINISTRADOR));
+usersRouter.get('/',asyncHandler(listUsers));
+usersRouter.post('/',asyncHandler(createUser));
+usersRouter.get('/:id',asyncHandler(getUser));
+usersRouter.patch('/:id',asyncHandler(updateUser));
+usersRouter.post('/:id/activate',asyncHandler(activateUser));
+usersRouter.post('/:id/reject',asyncHandler(rejectUser));
+usersRouter.post('/:id/deactivate',asyncHandler(deactivateUser));
+usersRouter.post('/:id/block',asyncHandler(blockUser));
+usersRouter.post('/:id/unblock',asyncHandler(unblockUser));
+usersRouter.post('/:id/reset-password',asyncHandler(resetPassword));
+usersRouter.post('/:id/change-role',asyncHandler(changeRole));
+usersRouter.delete('/:id',asyncHandler(deleteUser));

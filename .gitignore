@@ -12,3 +12,4 @@ server/data/*.json
 .env
 .env.*
 !.env.example
+backend/import-reports/

@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMINISTRADOR
+  NOTARIO
+  SECRETARIA
+  ARCHIVADOR
+  AUDITOR
+}
+
+enum UserStatus {
+  ACTIVO
+  INACTIVO
+  BLOQUEADO
+  PENDIENTE
+}
+
+enum AuditResult {
+  EXITOSO
+  ERROR
+  DENEGADO
+}
+
+model User {
+  id                    String        @id @default(uuid()) @db.Uuid
+  username              String?       @unique
+  email                 String        @unique
+  passwordHash          String
+  fullName              String
+  phone                 String?
+  avatarUrl             String?
+  role                  Role
+  status                UserStatus    @default(PENDIENTE)
+  protectedAccount      Boolean       @default(false)
+  lastAccessAt          DateTime?
+  failedLoginAttempts   Int           @default(0)
+  passwordResetRequired Boolean       @default(false)
+  tempPasswordExpiresAt DateTime?
+  deletedAt             DateTime?
+  deletedBy             String?       @db.Uuid
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  sessions              UserSession[]
+  auditEvents           AuditEvent[]
+
+  @@index([role, status])
+  @@index([deletedAt])
+}
+
+model UserSession {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  tokenHash      String   @unique
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model AuditEvent {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String?     @db.Uuid
+  action      String
+  module      String
+  targetType  String?
+  targetId    String?
+  detail      String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  result      AuditResult @default(EXITOSO)
+  createdAt   DateTime    @default(now())
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([action, module, result])
+}

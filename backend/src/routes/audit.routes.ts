@@ -1,0 +1,2 @@
+import {Router} from 'express';import {auditStats,getAudit,listAudit} from '../controllers/audit.controller.js';import {authenticate} from '../middlewares/auth.middleware.js';import {asyncHandler} from '../utils/http.js';
+export const auditRouter=Router();auditRouter.use(authenticate);auditRouter.get('/',asyncHandler(listAudit));auditRouter.get('/stats',asyncHandler(auditStats));auditRouter.get('/:id',asyncHandler(getAudit));

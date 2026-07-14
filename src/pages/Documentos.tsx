@@ -56,7 +56,7 @@ export function Documentos(){
         <button className="btn manualRegister" onClick={()=>navigate('/digitalizacion')}><FilePlus2 size={15}/>Registrar manualmente</button>
       </div>
       {advanced&&<div className="advancedFilters">
-        <label>CLASIFICACIÓN<select className="field" value={mode} onChange={event=>setMode(event.target.value)}><option value="">Actual e histórico</option><option value="actual">Documento actual</option><option value="historico">Documento histórico</option></select></label>
+        <label>CLASIFICACIÓN<select className="field" value={mode} onChange={event=>setMode(event.target.value)}><option value="">Todos los procesos</option><option value="actual">Digitalización asistida</option><option value="historico">Importación de archivo existente</option></select></label>
         <label>AÑO O BIENIO<select className="field" value={period} onChange={event=>setPeriod(event.target.value)}><option value="">Todos</option>{[...new Set(documents.map(doc=>String(doc.ano??doc.bienio)))].filter(value=>value!=='undefined').map(value=><option key={value}>{value}</option>)}</select></label>
         <label>TOMO<select className="field" value={tomo} onChange={event=>setTomo(event.target.value)}><option value="">Todos</option>{[...new Set(documents.map(doc=>doc.tomo))].map(value=><option key={value}>{value}</option>)}</select></label>
         <button className="btn" disabled={!hasFilters} onClick={clear}>Limpiar filtros</button>

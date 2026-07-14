@@ -1,5 +1,8 @@
 import type {Role} from '../data/roles';
-export type Profile={id:string,fullName:string,username:string,email:string,phone:string,avatar:string,role:Role,status:'Activo'|'Inactivo'|'Bloqueado'|'Pendiente de activación',lastAccess:string,createdAt:string};
-function headers(){return{'Content-Type':'application/json','X-SIGADN-USER':localStorage.getItem('sigadn-username')??'Usuario local','X-SIGADN-ROLE':localStorage.getItem('sigadn-role')??'Notario'}}
-async function request<T>(options:RequestInit={}){const response=await fetch('/api/profile',{...options,headers:{...headers(),...options.headers}});const data=await response.json() as unknown;if(!response.ok){const message=typeof data==='object'&&data!==null&&'error' in data?String((data as {error:unknown}).error):'No fue posible completar la operación.';throw new Error(message)}return data as T}
-export const profileApi={get:()=>request<Profile>(),update:(changes:Pick<Profile,'fullName'|'email'|'phone'>)=>request<Profile>({method:'PATCH',body:JSON.stringify(changes)})};
+import {apiRequest} from './apiClient';
+import {authApi,normalizeUser,type AuthSession} from './authApi';
+
+export type Profile={id:string;fullName:string;username:string;email:string;phone:string;avatar:string;role:Role;status:'Activo'|'Inactivo'|'Bloqueado'|'Pendiente de activación';lastAccess:string;createdAt:string};
+type RawProfile=Parameters<typeof normalizeUser>[0];
+const profile=(raw:RawProfile):Profile=>{const user=normalizeUser(raw);return {id:user.id,fullName:user.fullName,username:user.username??user.email,email:user.email,phone:user.phone??'',avatar:user.avatarUrl??'',role:user.role,status:user.status,lastAccess:user.lastAccessAt??'',createdAt:user.createdAt}};
+export const profileApi={get:async()=>profile(await apiRequest<RawProfile>('/profile')),update:async(changes:Pick<Profile,'fullName'|'email'|'phone'>)=>profile(await apiRequest<RawProfile>('/profile',{method:'PATCH',body:JSON.stringify(changes)})),changePassword:authApi.changePassword,sessions:():Promise<AuthSession[]>=>authApi.sessions(),revokeSession:authApi.revokeSession,revokeOthers:authApi.revokeOthers};
