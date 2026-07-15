@@ -1,6 +1,6 @@
 import {Router} from 'express';
 import type {NextFunction,Request,Response} from 'express';
-import {cancelProcessingJob,confirmDocument,deleteDocument,getDocument,getProcessingJob,listDocuments,restoreDocument,streamDocument,updateQuality,uploadDocument} from '../controllers/documents.controller.js';
+import {cancelProcessingJob,confirmDocument,continueQuality,deleteDocument,getDocument,getProcessingJob,listDocuments,restoreDocument,streamDocument,updateQuality,uploadDocument} from '../controllers/documents.controller.js';
 import {authenticate} from '../middlewares/auth.middleware.js';
 import {asyncHandler} from '../utils/http.js';
 
@@ -11,6 +11,7 @@ documentsRouter.post('/',expressRaw,asyncHandler(uploadDocument));
 documentsRouter.post('/upload',expressRaw,asyncHandler(uploadDocument));
 documentsRouter.get('/:uploadId/job',asyncHandler(getProcessingJob));
 documentsRouter.patch('/:uploadId/quality',asyncHandler(updateQuality));
+documentsRouter.post('/:uploadId/quality/continue',asyncHandler(continueQuality));
 documentsRouter.post('/:uploadId/cancel',asyncHandler(cancelProcessingJob));
 documentsRouter.post('/:uploadId/confirm',asyncHandler(confirmDocument));
 documentsRouter.delete('/:id',asyncHandler(deleteDocument));

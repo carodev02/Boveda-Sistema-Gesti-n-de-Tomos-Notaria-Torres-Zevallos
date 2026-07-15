@@ -14,10 +14,12 @@ const pages=(buffer:Buffer)=>Math.max(1,(buffer.toString('latin1').match(/\/Type
 const meta=(value:unknown)=>typeof value==='string'?value.trim():undefined;
 
 export async function uploadDocument(req:Request,res:Response){
-  const body=req.body as Buffer;
+  const contentType=req.get('content-type')?.split(';')[0];
+  let body=req.body as Buffer;let originalFileName=decodeURIComponent(String(req.get('x-file-name')??'documento.pdf'));
+  if(contentType==='multipart/form-data'){const parsed=parseMultipart(req.body as Buffer,req.get('content-type')??'');body=parsed.file;originalFileName=parsed.fileName||originalFileName}
   if(!Buffer.isBuffer(body)||body.length===0)throw new HttpError(400,'El archivo PDF está vacío.');
   if(body.length>50*1024*1024)throw new HttpError(413,'El PDF supera el límite de 50 MB.');
-  if(req.get('content-type')?.split(';')[0]!=='application/pdf')throw new HttpError(415,'Solo se permiten archivos PDF.');
+  if(contentType!=='application/pdf'&&contentType!=='multipart/form-data')throw new HttpError(415,'Solo se permiten archivos PDF.');
   if(body.subarray(0,5).toString()!=='%PDF-')throw new HttpError(400,'El archivo no es un PDF válido.');
   await fs.mkdir(tempRoot,{recursive:true});
   const uploadId=crypto.randomUUID();
@@ -25,10 +27,12 @@ export async function uploadDocument(req:Request,res:Response){
   const tempPath=path.join(tempRoot,uploadId,`${crypto.randomUUID()}.pdf`);
   await fs.mkdir(path.dirname(tempPath),{recursive:true});
   await fs.writeFile(tempPath,body);
-  const job=await prisma.documentProcessingJob.create({data:{id:uploadId,originalFileName:String(req.get('x-file-name')??'documento.pdf'),temporaryPath:path.relative(root,tempPath),fileHash:hash,fileSize:body.length,mimeType:'application/pdf',pageCount:pages(body),createdBy:req.auth!.userId,status:'UPLOADED'}});
+  const job=await prisma.documentProcessingJob.create({data:{id:uploadId,originalFileName,temporaryPath:path.relative(root,tempPath),fileHash:hash,fileSize:body.length,mimeType:'application/pdf',pageCount:pages(body),createdBy:req.auth!.userId,status:'UPLOADED'}});
   await recordAudit(req,{action:'DOCUMENT_UPLOAD_COMPLETED',module:'Documentos',targetType:'DocumentProcessingJob',targetId:job.id,detail:job.originalFileName,newValues:{fileHash:hash,pageCount:job.pageCount}});
-  res.status(201).json({uploadId:job.id,jobId:job.id,hash,size:body.length,mimeType:'application/pdf',pageCount:job.pageCount,status:job.status});
+  res.status(201).json({uploadId:job.id,jobId:job.id,originalFileName:job.originalFileName,hash,size:body.length,mimeType:'application/pdf',pageCount:job.pageCount,status:job.status,temporaryFileStored:true});
 }
+
+function parseMultipart(buffer:Buffer,contentType:string){const boundaryMatch=contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);if(!boundaryMatch)throw new HttpError(400,'Carga multipart inválida.');const boundary=Buffer.from(`--${boundaryMatch[1]??boundaryMatch[2]}`);const start=buffer.indexOf(Buffer.from('\r\n\r\n'));if(start<0)throw new HttpError(400,'Carga multipart inválida.');const header=buffer.subarray(0,start).toString('utf8');const nameMatch=header.match(/filename="([^"]*)"/i);const end=buffer.indexOf(boundary,start+4);const file=buffer.subarray(start+4,end>0?end-2:buffer.length);return {file,fileName:nameMatch?.[1]??'documento.pdf'}}
 
 export async function confirmDocument(req:Request,res:Response){
   const uploadId=String(req.params.uploadId);const input=req.body as Record<string,unknown>;
@@ -37,7 +41,7 @@ export async function confirmDocument(req:Request,res:Response){
   if(!body)throw new HttpError(404,'La carga temporal no existe o expiró.');
   const hash=crypto.createHash('sha256').update(body).digest('hex');
   const existing=await prisma.document.findFirst({where:{fileHash:hash,deletedAt:null}});if(existing)throw new HttpError(409,'Este PDF ya está registrado.');
-  const documentId=crypto.randomUUID();const storageName=`${documentId}.pdf`;
+  const documentId=crypto.randomUUID();const storageName=`${documentId}.pdf`;await recordAudit(req,{action:'DOCUMENT_SAVE_STARTED',module:'Documentos',targetType:'DocumentProcessingJob',targetId:job.id,detail:job.originalFileName});
   const documentType=safe(String(input.documentType??'sin-clasificar'));const period=safe(String(input.year??input.biennium??'sin-periodo'));const tomo=safe(String(input.tomo??'sin-tomo'));
   const relative=path.join('documents',documentType,period,`tomo-${tomo}`,storageName);const finalPath=path.join(root,relative);await fs.mkdir(path.dirname(finalPath),{recursive:true});await prisma.documentProcessingJob.update({where:{id:job.id},data:{status:'SAVING'}});await fs.rename(tempPath,finalPath);
   const contractors=Array.isArray(input.contractors)?input.contractors.map(String).filter(Boolean):[];
@@ -47,7 +51,7 @@ export async function confirmDocument(req:Request,res:Response){
   if(ocrFields.length)await prisma.ocrField.createMany({data:ocrFields.filter(field=>typeof field.key==='string').map(field=>({jobId:job.id,fieldName:String(field.key),extractedValue:Array.isArray(field.value)?field.value.join(', '):String(field.value??''),normalizedValue:Array.isArray(field.value)?field.value.join(', '):String(field.value??''),confidence:typeof field.confidence==='number'?field.confidence:Number(field.confidence)||0,requiresReview:Boolean(field.review)}))});
   await prisma.documentProcessingJob.update({where:{id:job.id},data:{status:'COMPLETED',documentId:created.id}});
   await recordAudit(req,{action:'DOCUMENT_CREATED',module:'Documentos',targetType:'Document',targetId:created.id,detail:created.displayName,newValues:{filePath:created.filePath,fileHash:created.fileHash,pageCount:created.pageCount}});
-  res.status(201).json({document:created,message:'Documento registrado correctamente'});
+  res.status(201).json({document:created,documentId:created.id,status:'COMPLETED',displayName:created.displayName,logicalLocation:{documentType:created.documentType,period:created.year??created.biennium??'',volume:created.tomo,folios:created.fojaInitial||created.fojaFinal?`Fojas ${created.fojaInitial??''}-${created.fojaFinal??''}`:''},message:'Documento archivado correctamente'});
 }
 
 export async function updateQuality(req:Request,res:Response){
@@ -57,6 +61,14 @@ export async function updateQuality(req:Request,res:Response){
   const status=input.override?'OCR_PENDING':input.issues?.length?'QUALITY_REVIEW':'OCR_PENDING';await prisma.documentProcessingJob.update({where:{id:jobId},data:{status}});
   await recordAudit(req,{action:input.override?'QUALITY_OVERRIDE_ACCEPTED':'QUALITY_ANALYSIS_COMPLETED',module:'Documentos',targetType:'DocumentProcessingJob',targetId:jobId,detail:input.override?'El usuario continuó pese a incidencias':'Control de calidad confirmado'});
   res.json({jobId,status,issues:input.issues??[]});
+}
+
+export async function continueQuality(req:Request,res:Response){
+  const jobId=String(req.params.uploadId);const job=await prisma.documentProcessingJob.findFirst({where:{id:jobId,createdBy:req.auth!.userId}});if(!job)throw new HttpError(404,'El trabajo documental no existe.');
+  const issues=await prisma.qualityIssue.findMany({where:{jobId}});const override=issues.length>0;
+  await prisma.documentProcessingJob.update({where:{id:jobId},data:{status:'OCR_PENDING'}});
+  await recordAudit(req,{action:'QUALITY_OVERRIDE_ACCEPTED',module:'Documentos',targetType:'DocumentProcessingJob',targetId:jobId,detail:override?'El usuario aceptó continuar con incidencias':'Calidad verificada',newValues:{qualityOverrideAccepted:override}});
+  res.json({jobId,status:'OCR_PENDING',qualityOverrideAccepted:override});
 }
 
 export async function getProcessingJob(req:Request,res:Response){const job=await prisma.documentProcessingJob.findFirst({where:{id:String(req.params.uploadId),createdBy:req.auth!.userId},include:{qualityIssues:true,ocrPages:true,ocrFields:true}});if(!job)throw new HttpError(404,'El trabajo documental no existe.');res.json({job});}
