@@ -1,4 +1,4 @@
-/* El username queda disponible para compatibilidad, pero no forma parte del perfil visible. */
+﻿/* El username queda disponible para compatibilidad, pero no forma parte del perfil visible. */
 .profileFields{grid-template-columns:1fr 1fr;grid-template-areas:'fullName email' 'phone .' 'role status'}
 .profileFields label:nth-child(1){grid-area:fullName}
 .profileFields label:nth-child(2){display:none}
@@ -7,3 +7,4 @@
 .profileFields label:nth-child(5){grid-area:role}
 .profileFields label:nth-child(6){grid-area:status}
 @media(max-width:640px){.profileFields{grid-template-columns:1fr;grid-template-areas:'fullName' 'email' 'phone' 'role' 'status'}}
+

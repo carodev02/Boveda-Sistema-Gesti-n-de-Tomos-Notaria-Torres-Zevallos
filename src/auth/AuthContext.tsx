@@ -1,6 +1,7 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-refresh/only-export-components */
+﻿/* eslint-disable react-hooks/set-state-in-effect, react-refresh/only-export-components */
 import {createContext,useContext,useEffect,useMemo,useState} from 'react';import {authApi,type AuthUser} from '../services/authApi';import {ApiError} from '../services/apiClient';
 type AuthContextValue={user:AuthUser|null;loading:boolean;login:(email:string,password:string)=>Promise<AuthUser>;logout:()=>Promise<void>;refresh:()=>Promise<void>;setUser:(user:AuthUser)=>void};
 const AuthContext=createContext<AuthContextValue|null>(null);
 export function AuthProvider({children}:{children:React.ReactNode}){const [user,setUser]=useState<AuthUser|null>(null);const [loading,setLoading]=useState(true);async function refresh(){try{setUser(await authApi.me())}catch(error){if(error instanceof ApiError&&error.status===401)setUser(null);else throw error}}useEffect(()=>{refresh().catch(()=>setUser(null)).finally(()=>setLoading(false))},[]);async function login(email:string,password:string){const authenticated=await authApi.login(email,password);setUser(authenticated);return authenticated}async function logout(){try{await authApi.logout()}finally{setUser(null)}}const value=useMemo(()=>({user,loading,login,logout,refresh,setUser}),[user,loading]);return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>}
 export function useAuth(){const context=useContext(AuthContext);if(!context)throw new Error('useAuth requiere AuthProvider');return context}
+

@@ -11,6 +11,7 @@ const schema=z.object({
   SESSION_EXPIRATION_HOURS:z.coerce.number().positive().default(12),
   MAX_FAILED_LOGIN_ATTEMPTS:z.coerce.number().int().positive().default(5),
   COOKIE_SECURE:z.string().default('false').transform(value=>value==='true')
+  ,STORAGE_ROOT:z.string().default('storage')
 });
 
 export const env=schema.parse(process.env);

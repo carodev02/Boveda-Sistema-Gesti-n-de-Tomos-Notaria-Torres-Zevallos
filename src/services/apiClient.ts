@@ -1,3 +1,4 @@
-const API_URL=(import.meta.env.VITE_API_URL as string|undefined)?.replace(/\/$/,'')??'/api';
+﻿const API_URL=(import.meta.env.VITE_API_URL as string|undefined)?.replace(/\/$/,'')??'/api';
 export class ApiError extends Error{constructor(message:string,public status:number){super(message)}}
 export async function apiRequest<T>(path:string,options:RequestInit={}){const response=await fetch(`${API_URL}${path}`,{...options,credentials:'include',headers:{...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});if(response.status===204)return undefined as T;const data=await response.json().catch(()=>({})) as {error?:string}|T;if(!response.ok)throw new ApiError('error' in (data as object)?String((data as {error?:string}).error):'No fue posible completar la operación.',response.status);return data as T}
+

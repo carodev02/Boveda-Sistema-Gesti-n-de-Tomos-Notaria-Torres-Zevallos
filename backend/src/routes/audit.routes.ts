@@ -1,2 +1,2 @@
-import {Router} from 'express';import {auditStats,getAudit,listAudit} from '../controllers/audit.controller.js';import {authenticate} from '../middlewares/auth.middleware.js';import {asyncHandler} from '../utils/http.js';
-export const auditRouter=Router();auditRouter.use(authenticate);auditRouter.get('/',asyncHandler(listAudit));auditRouter.get('/stats',asyncHandler(auditStats));auditRouter.get('/:id',asyncHandler(getAudit));
+import {Router} from 'express';import {auditStats,getAudit,listAudit} from '../controllers/audit.controller.js';import {authenticate,requireRoles} from '../middlewares/auth.middleware.js';import {asyncHandler} from '../utils/http.js';import {Role} from '@prisma/client';
+export const auditRouter=Router();auditRouter.use(authenticate,requireRoles(Role.ADMINISTRADOR,Role.NOTARIO));auditRouter.get('/',asyncHandler(listAudit));auditRouter.get('/stats',asyncHandler(auditStats));auditRouter.get('/:id',asyncHandler(getAudit));

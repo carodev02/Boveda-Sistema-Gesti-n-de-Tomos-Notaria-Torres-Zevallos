@@ -1,4 +1,4 @@
-import type {Role} from '../data/roles';
+﻿import type {Role} from '../data/roles';
 import {apiRequest} from './apiClient';
 import {normalizeUser,roleToBackend} from './authApi';
 
@@ -23,3 +23,4 @@ export const usersApi={
   changeRole:async(id:string,role:Role,reason:string)=>account(await apiRequest<RawUser>(`/users/${id}/change-role`,{method:'POST',body:JSON.stringify({role:roleToBackend(role),reason})})),
   remove:async(id:string,reason:string)=>account(await apiRequest<RawUser>(`/users/${id}`,{method:'DELETE',body:JSON.stringify({reason})}))
 };
+

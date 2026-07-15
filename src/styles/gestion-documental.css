@@ -1,4 +1,4 @@
-.docsPage{padding:16px 18px 24px;background:var(--ivory)}
+﻿.docsPage{padding:16px 18px 24px;background:var(--ivory)}
 .documentsControls{padding:14px 16px 12px;margin-bottom:16px;border-radius:16px;overflow:hidden}
 .documentsControlsHeader{display:flex;align-items:flex-start;justify-content:space-between}.documentsTabs{margin:0 0 14px;padding:3px;background:var(--ivory)}.documentsAiButton{height:35px;padding:0 13px;color:#8f6b17;background:#fffdf7}
 .documentsTabs button{min-height:31px;padding:7px 16px}
@@ -25,3 +25,4 @@
 .documentsPagination div{display:flex;gap:3px}.documentsPagination button{border:0;background:transparent;width:27px;height:27px;border-radius:50%;color:var(--text)}.documentsPagination button.current{background:var(--gold);color:#fff;font-weight:700}.documentsPagination button:disabled{opacity:.3}
 .documentsEmpty,.documentsLoading{min-height:310px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:35px}.documentsEmpty .emptyIcon{width:50px;height:50px;border-radius:15px;background:var(--champagne);color:var(--gold);display:grid;place-items:center}.documentsEmpty h2{font-size:15px;margin:14px 0 6px}.documentsEmpty p{font-size:10px;color:var(--muted)}.documentsEmpty>div:last-child{display:flex;gap:9px;margin-top:17px}.documentsEmpty .btn{border-radius:14px}.documentsLoading{color:var(--muted);font-size:10px}
 @media(max-width:1350px){.documentsControls .docFilters{grid-template-columns:minmax(220px,1fr) 135px 145px 125px auto}.manualRegister{padding:8px 11px}.docsPage .documentsTable{min-width:1320px}}
+

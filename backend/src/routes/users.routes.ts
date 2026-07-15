@@ -3,6 +3,7 @@ import {Router} from 'express';
 import {activateUser,blockUser,changeRole,createUser,deactivateUser,deleteUser,getUser,listUsers,rejectUser,resetPassword,unblockUser,updateUser} from '../controllers/users.controller.js';
 import {authenticate,requireRoles} from '../middlewares/auth.middleware.js';
 import {asyncHandler} from '../utils/http.js';
+import {transferNotary} from '../controllers/notary-transfer.controller.js';
 
 export const usersRouter=Router();
 usersRouter.use(authenticate,requireRoles(Role.NOTARIO,Role.ADMINISTRADOR));
@@ -17,4 +18,5 @@ usersRouter.post('/:id/block',asyncHandler(blockUser));
 usersRouter.post('/:id/unblock',asyncHandler(unblockUser));
 usersRouter.post('/:id/reset-password',asyncHandler(resetPassword));
 usersRouter.post('/:id/change-role',asyncHandler(changeRole));
+usersRouter.post('/:id/transfer-notary',asyncHandler(transferNotary));
 usersRouter.delete('/:id',asyncHandler(deleteUser));

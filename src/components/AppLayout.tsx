@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+﻿import {useEffect,useRef,useState} from 'react';
 import {BarChart3,Bell,BookOpen,Bot,CalendarDays,ChevronRight,FileText,KeyRound,LayoutDashboard,LogOut,Menu,MonitorSmartphone,Pencil,ScanLine,Search,Settings,Shield,UserRound,UsersRound,X} from 'lucide-react';
 import {NavLink,Outlet,useLocation,useNavigate} from 'react-router-dom';
 import {useAuth} from '../auth/AuthContext';
@@ -20,7 +20,8 @@ export function AppLayout(){
   const menuRef=useRef<HTMLDivElement>(null);
   const [currentDate,setCurrentDate]=useState(()=>new Date());
   const canManageUsers=user?.role==='Notario'||user?.role==='Administrador';
-  const visibleNav=nav.filter(([to])=>to!=='/usuarios'||canManageUsers);
+  const canViewAudit=user?.role==='Notario'||user?.role==='Administrador';
+  const visibleNav=nav.filter(([to])=>(to!=='/usuarios'||canManageUsers)&&(to!=='/auditoria'||canViewAudit));
 
   useEffect(()=>{
     function close(event:MouseEvent){if(menuRef.current&&!menuRef.current.contains(event.target as Node))setProfileOpen(false)}
@@ -32,6 +33,11 @@ export function AppLayout(){
     const interval=window.setInterval(()=>setCurrentDate(new Date()),60000);
     return()=>window.clearInterval(interval);
   },[]);
+
+  useEffect(()=>{
+    const notice=(location.state as {accessDenied?:string}|null)?.accessDenied;
+    if(notice){window.alert(notice);navigate(location.pathname,{replace:true,state:null})}
+  },[location.state,navigate,location.pathname]);
 
   async function logOut(){await logout();navigate('/login')}
   function submitSearch(event:React.FormEvent){event.preventDefault();if(search.trim())navigate(`/documentos?q=${encodeURIComponent(search.trim())}`)}
@@ -54,8 +60,9 @@ export function AppLayout(){
       </div>
     </aside>
     <main className="main">
-      <header className="topbar"><button className="mobileMenuButton" aria-label={mobileNavOpen?'Cerrar menú':'Abrir menú'} onClick={()=>setMobileNavOpen(value=>!value)}>{mobileNavOpen?<X size={20}/>:<Menu size={20}/>}</button><div><h1>{titles[key]}</h1><span>SIGADN · Notaría Torres Zevallos</span></div><div className="topActions"><form className="search" onSubmit={submitSearch}><Search size={15}/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar archivos reales..."/><kbd>↵</kbd></form><button className="notificationButton" title="Estado del almacenamiento" onClick={()=>window.alert('En esta etapa, los PDF continúan almacenados localmente en IndexedDB.')}><Bell size={18}/></button><div className="date"><CalendarDays size={15}/>{new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(currentDate)} · {new Intl.DateTimeFormat('es-PE',{hour:'numeric',minute:'2-digit',hour12:true}).format(currentDate)}</div></div></header>
+      <header className="topbar"><button className="mobileMenuButton" aria-label={mobileNavOpen?'Cerrar menú':'Abrir menú'} onClick={()=>setMobileNavOpen(value=>!value)}>{mobileNavOpen?<X size={20}/>:<Menu size={20}/>}</button><div><h1>{titles[key]}</h1><span>SIGADN · Notaría Torres Zevallos</span></div><div className="topActions"><form className="search" onSubmit={submitSearch}><Search size={15}/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar archivos reales..."/><kbd>â†µ</kbd></form><button className="notificationButton" title="Estado del almacenamiento" onClick={()=>window.alert('En esta etapa, los PDF continúan almacenados localmente en IndexedDB.')}><Bell size={18}/></button><div className="date"><CalendarDays size={15}/>{new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(currentDate)} · {new Intl.DateTimeFormat('es-PE',{hour:'numeric',minute:'2-digit',hour12:true}).format(currentDate)}</div></div></header>
       <Outlet/>
     </main>
   </div>;
 }
+

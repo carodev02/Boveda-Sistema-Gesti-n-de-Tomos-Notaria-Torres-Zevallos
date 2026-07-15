@@ -1,1 +1,4 @@
-export function Brand({light=false}:{light?:boolean}){return <div className="brand"><div className="brandMark"><b>NOTARÍA</b><strong>TORRES</strong><span>ZEVALLOS</span></div>{!light&&<div><b>SIGADN</b><small>Notaría Torres Zevallos</small></div>}</div>}
+﻿import logo from '../assets/branding/logo-notaria-torres-zevallos.png';
+
+export function Brand({light=false}:{light?:boolean}){return <div className="brand"><img className="brandLogo" src={logo} alt="Logo de la Notaría Torres Zevallos"/>{!light&&<div><b>SIGADN</b><small>Notaría Torres Zevallos</small></div>}</div>}
+

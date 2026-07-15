@@ -1,4 +1,4 @@
-import {useState} from 'react';
+﻿import {useState} from 'react';
 import {CheckCircle2,X} from 'lucide-react';
 import {registrationApi,type RequestedRole} from '../services/registrationApi';
 import './register-modal.css';
@@ -31,3 +31,4 @@ export function RegisterModal({onClose}:Props){
     </form>}
   </section></div>;
 }
+

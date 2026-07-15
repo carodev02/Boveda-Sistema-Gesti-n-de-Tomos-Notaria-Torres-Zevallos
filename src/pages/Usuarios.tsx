@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+﻿/* eslint-disable react-hooks/set-state-in-effect */
 import {useEffect,useMemo,useState} from 'react';
 import {Ban,CheckCircle2,Edit3,Eye,KeyRound,Lock,MoreHorizontal,Plus,Search,ShieldCheck,Trash2,Unlock,UserCog,X,XCircle} from 'lucide-react';
 import {useAuth} from '../auth/AuthContext';
@@ -65,12 +65,12 @@ export function Usuarios(){
     <section className="card usersControls">
       <div><h2>Administración de cuentas</h2><p>Control operativo de usuarios registrados en SIGADN.</p></div>
       <button className="btn primary" onClick={()=>open('create')}><Plus/>Nuevo usuario</button>
-      <div className="usersViewTabs"><button className={!statusFilter?'active':''} onClick={()=>setStatusFilter('')}>Todas las cuentas</button><button className={statusFilter==='Pendiente de activación'?'active':''} onClick={()=>setStatusFilter('Pendiente de activación')}>Cuentas pendientes <span>{users.filter(user=>user.status==='Pendiente de activación').length}</span></button></div>
+      <div className="usersViewTabs"><button className={!statusFilter?'active':''} onClick={()=>setStatusFilter('')}>Todas las cuentas</button>{(()=>{const pendingCount=users.filter(user=>user.status==='Pendiente de activación').length;return <button className={statusFilter==='Pendiente de activación'?'active':''} onClick={()=>setStatusFilter('Pendiente de activación')}>Cuentas pendientes {pendingCount>0&&<span>{pendingCount}</span>}</button>})()}</div>
       <div className="usersFilters">
         <label><Search/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar nombre o correo..."/></label>
         <select className="field" value={roleFilter} onChange={event=>setRoleFilter(event.target.value)}><option value="">Todos los roles</option>{roles.map(role=><option key={role}>{role}</option>)}</select>
         <select className="field" value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Todos los estados</option>{accountStatuses.map(status=><option key={status}>{status}</option>)}</select>
-        <span>{filtered.length} cuenta(s)</span>
+        <span>{filtered.length} {filtered.length===1?'cuenta':'cuentas'}</span>
       </div>
     </section>
     {notice&&<div className="usersAlert">{notice}</div>}
@@ -97,3 +97,4 @@ export function Usuarios(){
     </section></div>}
   </div>;
 }
+

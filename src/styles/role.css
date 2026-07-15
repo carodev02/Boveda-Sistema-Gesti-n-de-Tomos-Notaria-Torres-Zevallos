@@ -1,4 +1,4 @@
-.roles button{transition:background .15s,border-color .15s,box-shadow .15s}
+﻿.roles button{transition:background .15s,border-color .15s,box-shadow .15s}
 .roles button:hover{border-color:var(--gold)}
 .roles button:focus-visible{outline:2px solid var(--gold-light);outline-offset:2px}
 .roles button.selected{box-shadow:0 2px 5px rgba(116,86,18,.2)}
@@ -9,3 +9,4 @@
 .logoutButton{border:0;background:transparent;color:#888;padding:6px;border-radius:50%;display:grid;place-items:center}
 .logoutButton:hover{background:var(--champagne);color:var(--title)}
 .forgotButton{border:0;background:transparent;color:#bc8d20;padding:0;font-size:11px}
+

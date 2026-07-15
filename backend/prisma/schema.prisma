@@ -49,6 +49,7 @@ model User {
   updatedAt             DateTime      @updatedAt
   sessions              UserSession[]
   auditEvents           AuditEvent[]
+  documentsCreated      Document[]
 
   @@index([role, status])
   @@index([deletedAt])
@@ -89,4 +90,53 @@ model AuditEvent {
   @@index([createdAt])
   @@index([userId, createdAt])
   @@index([action, module, result])
+}
+
+model Document {
+  id                String       @id @default(uuid()) @db.Uuid
+  displayName       String
+  originalFileName  String
+  storageName       String       @unique
+  filePath          String
+  fileHash          String       @unique
+  fileSize          Int
+  mimeType          String
+  pageCount         Int
+  documentMode      String
+  documentType      String
+  year              Int?
+  biennium          String?
+  tomo              String
+  fojaInitial       Int?
+  fojaFinal         Int?
+  escritura         String?
+  kardex             String?
+  minuta             String?
+  actoJuridico      String?
+  documentDate      String?
+  observations      String?
+  ocrConfidence     Float?
+  documentStatus    String       @default("En revisión")
+  ocrStatus         String       @default("Procesado")
+  deletedAt         DateTime?
+  deletedBy         String?      @db.Uuid
+  createdBy         String       @db.Uuid
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  createdByUser     User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  contractors       DocumentContractor[]
+
+  @@index([documentType, year, biennium, tomo])
+  @@index([deletedAt])
+  @@index([createdAt])
+}
+
+model DocumentContractor {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid
+  name       String
+  position   Int      @default(0)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
