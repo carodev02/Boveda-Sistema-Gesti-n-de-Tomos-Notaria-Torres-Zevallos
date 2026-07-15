@@ -71,15 +71,15 @@ export function Documentos(){
           <table className="documentsTable">
             <thead><tr>{['Escritura','Kardex','Minuta','Contratante principal','Tipo documental','Acto jurídico','Año o bienio','Tomo','Fojas','Estado documental','Estado OCR','Acciones'].map(value=><th key={value}>{value}</th>)}</tr></thead>
             <tbody>{shown.map(doc=><tr key={doc.id}>
-              <td className="writing">{doc.escritura||'â€”'}</td>
-              <td title={doc.kardex}>{doc.kardex||'â€”'}</td>
-              <td>{doc.numeroMinuta||'â€”'}</td>
-              <td className="principalContractor" title={doc.contratantes.join('; ')}>{doc.contratantes[0]||'â€”'}{doc.contratantes.length>1&&<small>+{doc.contratantes.length-1} adicional{doc.contratantes.length>2?'es':''}</small>}</td>
-              <td>{doc.tipo||'â€”'}</td>
-              <td title={doc.actoJuridico}>{doc.actoJuridico||'â€”'}</td>
-              <td>{doc.ano??doc.bienio??'â€”'}</td>
-              <td>{doc.tomo||'â€”'}</td>
-              <td>{doc.fojaInicial||doc.fojaFinal?`${doc.fojaInicial??'â€”'} – ${doc.fojaFinal??'â€”'}`:'â€”'}</td>
+              <td className="writing">{doc.escritura||'—'}</td>
+              <td title={doc.kardex}>{doc.kardex||'—'}</td>
+              <td>{doc.numeroMinuta||'—'}</td>
+              <td className="principalContractor" title={doc.contratantes.join('; ')}>{doc.contratantes[0]||'—'}{doc.contratantes.length>1&&<small>+{doc.contratantes.length-1} adicional{doc.contratantes.length>2?'es':''}</small>}</td>
+              <td>{doc.tipo||'—'}</td>
+              <td title={doc.actoJuridico}>{doc.actoJuridico||'—'}</td>
+              <td>{doc.ano??doc.bienio??'—'}</td>
+              <td>{doc.tomo||'—'}</td>
+              <td>{doc.fojaInicial||doc.fojaFinal?`${doc.fojaInicial??'—'} – ${doc.fojaFinal??'—'}`:'—'}</td>
               <td><StatusBadge>{doc.documento}</StatusBadge></td>
               <td><StatusBadge>{doc.ocr}</StatusBadge></td>
               <td><div className="rowActions">
@@ -88,12 +88,12 @@ export function Documentos(){
                 <button title="Descargar PDF" onClick={()=>download(doc)}><Download/></button>
                 <button title="Ver historial" onClick={()=>navigate('/auditoria')}><History/></button>
                 <button title="Eliminar documento" onClick={()=>remove(doc)}><Trash2/></button>
-                <button title="Más información" onClick={()=>window.alert(`Archivo: ${doc.fileName}\nMinuta: ${doc.numeroMinuta||'â€”'}\nActo: ${doc.actoJuridico}\nContratantes: ${doc.contratantes.join('; ')}\nObservaciones: ${doc.observaciones||'â€”'}`)}><MoreHorizontal/></button>
+                <button title="Más información" onClick={()=>window.alert(`Archivo: ${doc.fileName}\nMinuta: ${doc.numeroMinuta||'—'}\nActo: ${doc.actoJuridico}\nContratantes: ${doc.contratantes.join('; ')}\nObservaciones: ${doc.observaciones||'—'}`)}><MoreHorizontal/></button>
               </div></td>
             </tr>)}</tbody>
           </table>
         </div>
-        <footer className="documentsPagination"><span>Página {currentPage} de {pages} · {filtered.length} registros</span><div><button disabled={currentPage<=1} onClick={()=>setPage(value=>value-1)}>â€¹</button>{Array.from({length:pages},(_,index)=><button className={currentPage===index+1?'current':''} onClick={()=>setPage(index+1)} key={index}>{index+1}</button>)}<button disabled={currentPage>=pages} onClick={()=>setPage(value=>value+1)}>â€º</button></div></footer>
+        <footer className="documentsPagination"><span>Página {currentPage} de {pages} · {filtered.length} registros</span><div><button disabled={currentPage<=1} onClick={()=>setPage(value=>value-1)}>‹</button>{Array.from({length:pages},(_,index)=><button className={currentPage===index+1?'current':''} onClick={()=>setPage(index+1)} key={index}>{index+1}</button>)}<button disabled={currentPage>=pages} onClick={()=>setPage(value=>value+1)}>›</button></div></footer>
       </>}
     </section>
   </div>;

@@ -50,6 +50,7 @@ model User {
   sessions              UserSession[]
   auditEvents           AuditEvent[]
   documentsCreated      Document[]
+  processingJobs        DocumentProcessingJob[]
 
   @@index([role, status])
   @@index([deletedAt])
@@ -118,17 +119,105 @@ model Document {
   ocrConfidence     Float?
   documentStatus    String       @default("En revisión")
   ocrStatus         String       @default("Procesado")
+  isTestData        Boolean      @default(false)
   deletedAt         DateTime?
   deletedBy         String?      @db.Uuid
+  deletionReason    String?
   createdBy         String       @db.Uuid
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   createdByUser     User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   contractors       DocumentContractor[]
+  processingJob     DocumentProcessingJob?
 
   @@index([documentType, year, biennium, tomo])
   @@index([deletedAt])
   @@index([createdAt])
+}
+
+enum ProcessingJobStatus {
+  UPLOADED
+  QUALITY_ANALYSIS
+  QUALITY_REVIEW
+  OCR_PENDING
+  OCR_PROCESSING
+  REVIEW_REQUIRED
+  READY_TO_SAVE
+  SAVING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model DocumentProcessingJob {
+  id               String              @id @default(uuid()) @db.Uuid
+  originalFileName String
+  temporaryPath    String
+  fileHash         String
+  fileSize         Int
+  mimeType         String
+  pageCount        Int
+  station          String?
+  status           ProcessingJobStatus @default(UPLOADED)
+  errorMessage     String?
+  createdBy        String              @db.Uuid
+  documentId       String?             @unique @db.Uuid
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  user             User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  document         Document?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  qualityIssues    QualityIssue[]
+  ocrPages         OcrPage[]
+  ocrFields        OcrField[]
+
+  @@index([status, createdAt])
+  @@index([fileHash])
+}
+
+model QualityIssue {
+  id              String                @id @default(uuid()) @db.Uuid
+  jobId           String                @db.Uuid
+  pageNumber      Int
+  issueType       String
+  severity        String
+  message         String
+  suggestedAction String?
+  createdAt       DateTime              @default(now())
+  job             DocumentProcessingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, pageNumber])
+}
+
+model OcrPage {
+  id         String                @id @default(uuid()) @db.Uuid
+  jobId      String                @db.Uuid
+  pageNumber Int
+  text       String
+  confidence Float?
+  durationMs Int?
+  engine     String?
+  createdAt  DateTime              @default(now())
+  job        DocumentProcessingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, pageNumber])
+}
+
+model OcrField {
+  id              String                @id @default(uuid()) @db.Uuid
+  jobId           String                @db.Uuid
+  fieldName       String
+  extractedValue  String?
+  normalizedValue String?
+  confidence      Float?
+  sourcePage      Int?
+  sourceText      String?
+  requiresReview  Boolean               @default(false)
+  correctedBy     String?               @db.Uuid
+  correctedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  job             DocumentProcessingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, fieldName])
 }
 
 model DocumentContractor {
