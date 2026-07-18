@@ -8,7 +8,7 @@ export const privilegedRoles:Role[]=[Role.NOTARIO,Role.ADMINISTRADOR];
 export function assertCanManage(actor:{id:string;role:Role},target:Pick<User,'id'|'role'|'protectedAccount'>,operation:'edit'|'status'|'role'|'delete'){
   if(!userManagerRoles.includes(actor.role))throw new HttpError(403,'No tiene permiso para administrar usuarios.');
   if(actor.id===target.id&&['status','delete'].includes(operation))throw new HttpError(409,'No puede bloquear, desactivar ni eliminar su propia cuenta.');
-  if(target.protectedAccount&&actor.role!==Role.ADMINISTRADOR)throw new HttpError(403,'La cuenta está protegida.');
+  if(target.protectedAccount&&actor.role!==Role.ADMINISTRADOR)throw new HttpError(403,'La cuenta principal protegida no puede modificarse mediante esta acción.',{code:'PROTECTED_NOTARY_ACCOUNT'});
 }
 
 export function assertAssignableRole(actorRole:Role,nextRole:Role){

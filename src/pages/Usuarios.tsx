@@ -1,5 +1,5 @@
 ﻿/* eslint-disable react-hooks/set-state-in-effect */
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {Ban,CheckCircle2,Edit3,Eye,KeyRound,Lock,MoreHorizontal,Plus,Search,ShieldCheck,Trash2,Unlock,UserCog,X,XCircle} from 'lucide-react';
 import {useAuth} from '../auth/AuthContext';
 import {roles,type Role} from '../data/roles';
@@ -30,6 +30,7 @@ export function Usuarios(){
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [form,setForm]=useState<UserForm>(emptyForm);
+  const executionRef=useRef(false);
   const currentId=authenticatedUser?.id??'';
 
   async function load(){setLoading(true);setError('');try{setUsers(await usersApi.list())}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo cargar usuarios.')}finally{setLoading(false)}}
@@ -45,7 +46,8 @@ export function Usuarios(){
   function close(){if(!busy){setAction(undefined);setSelected(undefined);setReason('');setError('')}}
 
   async function execute(){
-    if(!action)return;
+    if(!action||executionRef.current)return;
+    executionRef.current=true;
     if((action==='create'||action==='edit')&&(!form.username.trim()||!form.fullName.trim()||!form.email.trim())){setError('Completa los campos obligatorios.');return}
     if(sensitive.has(action)&&!reason.trim()){setError('Debes indicar un motivo para continuar.');return}
     setBusy(true);setError('');
@@ -58,7 +60,7 @@ export function Usuarios(){
       else if(action==='delete'&&selected)await usersApi.remove(selected.id,reason);
       else if(selected&&['reset-password','activate','deactivate','block','unblock','reject'].includes(action))await usersApi.action(selected.id,action as 'reset-password'|'activate'|'deactivate'|'block'|'unblock'|'reject',reason);
       await load();close();
-    }catch(cause){setError(cause instanceof Error?cause.message:'No se pudo completar la acción.')}finally{setBusy(false)}
+    }catch(cause){setError(cause instanceof Error?cause.message:'No se pudo completar la acción.')}finally{executionRef.current=false;setBusy(false)}
   }
 
   return <div className="page-content usersPage">
@@ -80,7 +82,7 @@ export function Usuarios(){
         <thead><tr><th>Identificador</th><th>Nombre completo</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Fecha de creación</th><th>Acciones</th></tr></thead>
         <tbody>{filtered.map(user=><tr key={user.id}>
           <td><b>{user.username??user.email}</b>{user.protectedAccount&&<small><ShieldCheck/>Protegida</small>}</td><td>{user.fullName}</td><td>{user.email}</td><td>{user.role}</td><td><span className={`badge ${statusClass(user.status)}`}>{user.status}</span></td><td>{user.lastAccess==='Sin acceso'?'Sin acceso':new Date(user.lastAccess).toLocaleString('es-PE')}</td><td>{new Date(user.createdAt).toLocaleDateString('es-PE')}</td>
-          <td><div className="userActions"><button title="Ver detalle" onClick={()=>open('detail',user)}><Eye/></button><button title="Editar" onClick={()=>open('edit',user)}><Edit3/></button><button title="Cambiar rol" onClick={()=>open('role',user)}><UserCog/></button><button title="Restablecer contraseña" onClick={()=>open('reset-password',user)}><KeyRound/></button>{user.status!=='Activo'&&user.status!=='Bloqueado'&&<button title="Activar" onClick={()=>open('activate',user)}><CheckCircle2/></button>}{user.status==='Pendiente de activación'&&<button title="Rechazar cuenta" onClick={()=>open('reject',user)}><XCircle/></button>}{user.status==='Activo'&&<button title="Desactivar" disabled={user.id===currentId} onClick={()=>open('deactivate',user)}><Ban/></button>}{user.status!=='Bloqueado'?<button title="Bloquear" disabled={user.id===currentId} onClick={()=>open('block',user)}><Lock/></button>:<button title="Desbloquear" onClick={()=>open('unblock',user)}><Unlock/></button>}<button title="Eliminar lógicamente" disabled={user.id===currentId} onClick={()=>open('delete',user)}><Trash2/></button><button title="Más información" onClick={()=>open('detail',user)}><MoreHorizontal/></button></div></td>
+          <td><div className="userActions"><button type="button" title="Ver detalle" onClick={()=>open('detail',user)}><Eye/></button><button type="button" title="Editar" disabled={user.protectedAccount} onClick={()=>open('edit',user)}><Edit3/></button><button type="button" title="Cambiar rol" disabled={user.protectedAccount} onClick={()=>open('role',user)}><UserCog/></button><button type="button" title="Restablecer contraseña" disabled={user.protectedAccount} onClick={()=>open('reset-password',user)}><KeyRound/></button>{user.status!=='Activo'&&user.status!=='Bloqueado'&&<button type="button" title="Activar" disabled={user.protectedAccount} onClick={()=>open('activate',user)}><CheckCircle2/></button>}{user.status==='Pendiente de activación'&&<button type="button" title="Rechazar cuenta" disabled={user.protectedAccount} onClick={()=>open('reject',user)}><XCircle/></button>}{user.status==='Activo'&&<button type="button" title="Desactivar" disabled={user.id===currentId||user.protectedAccount} onClick={()=>open('deactivate',user)}><Ban/></button>}{user.status!=='Bloqueado'?<button type="button" title="Bloquear" disabled={user.id===currentId||user.protectedAccount} onClick={()=>open('block',user)}><Lock/></button>:<button type="button" title="Desbloquear" disabled={user.protectedAccount} onClick={()=>open('unblock',user)}><Unlock/></button>}<button type="button" title="Eliminar lógicamente" disabled={user.id===currentId||user.protectedAccount} onClick={()=>open('delete',user)}><Trash2/></button><button type="button" title="Más información" onClick={()=>open('detail',user)}><MoreHorizontal/></button></div></td>
         </tr>)}</tbody>
       </table></div>}
     </section>

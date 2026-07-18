@@ -6,6 +6,7 @@ import {prisma} from '../config/prisma.js';
 import {env} from '../config/env.js';
 import {recordAudit} from '../services/audit.service.js';
 import {HttpError} from '../utils/http.js';
+import {enqueueOcrJob} from '../services/ocr-worker.service.js';
 
 const root=path.resolve(env.STORAGE_ROOT);
 const tempRoot=path.join(root,'temporary');
@@ -68,7 +69,7 @@ export async function continueQuality(req:Request,res:Response){
   const issues=await prisma.qualityIssue.findMany({where:{jobId}});const override=issues.length>0;
   await prisma.documentProcessingJob.update({where:{id:jobId},data:{status:'OCR_PENDING'}});
   await recordAudit(req,{action:'QUALITY_OVERRIDE_ACCEPTED',module:'Documentos',targetType:'DocumentProcessingJob',targetId:jobId,detail:override?'El usuario aceptó continuar con incidencias':'Calidad verificada',newValues:{qualityOverrideAccepted:override}});
-  res.json({jobId,status:'OCR_PENDING',qualityOverrideAccepted:override});
+  const queued=await enqueueOcrJob(jobId);res.json({...queued,qualityOverrideAccepted:override});
 }
 
 export async function getProcessingJob(req:Request,res:Response){const job=await prisma.documentProcessingJob.findFirst({where:{id:String(req.params.uploadId),createdBy:req.auth!.userId},include:{qualityIssues:true,ocrPages:true,ocrFields:true}});if(!job)throw new HttpError(404,'El trabajo documental no existe.');res.json({job});}

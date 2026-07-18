@@ -14,3 +14,7 @@ server/data/*.json
 !.env.example
 backend/import-reports/
 backend/storage/
+
+src-tauri/vision/.venv/
+srcrc-tauri/target/
+src-tauri/target/

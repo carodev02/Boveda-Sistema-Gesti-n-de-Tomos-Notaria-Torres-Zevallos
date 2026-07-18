@@ -11,5 +11,6 @@
     "resolveJsonModule": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "prisma", "tests"]
+  "include": ["src", "prisma"],
+  "exclude": ["tests"]
 }
