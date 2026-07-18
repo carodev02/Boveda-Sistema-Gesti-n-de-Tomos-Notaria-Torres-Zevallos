@@ -120,9 +120,11 @@ export interface InventoryFile{
   errorStage?:string;
   retryable?:boolean;
   proposedNormalizedFilename?:string;
+  componentPaths?:string[];
+  logicalPageGroup?:boolean;
 }
 
-export type ExcelTargetField='correlative'|'kardexNumber'|'tomeNumber'|'year'|'biennium'|'instrumentType'|'instrumentNumber'|'minuteNumber'|'legalAct'|'contractor'|'folios'|'date'|'registryType'|'IGNORE';
+export type ExcelTargetField='correlative'|'kardexNumber'|'tomeNumber'|'year'|'biennium'|'instrumentType'|'instrumentNumber'|'minuteNumber'|'legalAct'|'contractor'|'folios'|'date'|'registryType'|'observations'|'IGNORE';
 export interface ExcelColumnProfile{
   index:number;
   header:string;
@@ -135,10 +137,12 @@ export interface ExcelColumnProfile{
 }
 export interface ExcelSheetProfile{
   name:string;
+  headerRowNumber:number;
   rowCount:number;
   headers:string[];
   columns:ExcelColumnProfile[];
   sampleRows:unknown[][];
+  derivedValues?:Partial<Record<Exclude<ExcelTargetField,'IGNORE'>,string|number>>;
 }
 export interface ExcelWorkbookProfile{
   fileName:string;
@@ -162,6 +166,19 @@ export interface NormalizedExcelRow{
 }
 
 export type ValidationMatchStatus='MATCHED'|'PARTIAL_MATCH'|'CONFLICT'|'NOT_FOUND_IN_EXCEL'|'DUPLICATE_IN_EXCEL'|'KARDEX_NOT_DETECTED';
+export type PdfReadStatus='PENDING'|'READING'|'TEXT_EXTRACTED'|'OCR_COMPLETED'|'ERROR';
+export interface PdfDocumentEvidence{
+  analysisVersion?:number;
+  status:PdfReadStatus;
+  pageCount:number;
+  textCharacters:number;
+  usedOcr:boolean;
+  analyzedAt:string;
+  fields:Partial<Record<'kardexNumber'|'minuteNumber'|'printedFolio'|'instrumentType'|'instrumentNumber'|'contractor'|'documentDate'|'documentClass'|'unclassifiedAv',string>>;
+  legalAct?:string;
+  averageConfidence?:number;
+  error?:string;
+}
 export interface ImportValidationResult{
   id:string;
   jobId:string;
@@ -172,6 +189,11 @@ export interface ImportValidationResult{
   multipleContractors:string[];
   legalAct?:string;
   fileSnapshot?:InventoryFile;
+  pdfEvidence?:PdfDocumentEvidence;
+  pdfConflicts?:string[];
+  resolvedFields?:Partial<Record<'documentClass'|'period'|'tome'|'folios'|'kardexNumber'|'minuteNumber'|'instrumentType'|'instrumentNumber'|'legalAct'|'contractor'|'documentDate',{value:string;source:'PDF'|'EXCEL'|'FOLDER'|'FILENAME';confirmed:boolean}>>;
+  registeredAt?:string;
+  registrationError?:string;
 }
 
 export type ScanSessionStatus='CREATED'|'CZUR_OPENING'|'WAITING_FOR_SCAN'|'FILE_DETECTED'|'FILE_STABILIZING'|'COPYING'|'PREPROCESSING'|'READY_FOR_REVIEW'|'CANCELLED'|'FAILED';
