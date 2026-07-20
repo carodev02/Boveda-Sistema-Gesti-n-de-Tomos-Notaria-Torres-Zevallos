@@ -224,7 +224,7 @@ export function DigitalizacionProcess() {
     reviewTransitionDoneRef.current = false;
     manuallyEditedFieldsRef.current.clear();
     ocrJobAppliedRef.current=undefined;
-    scanWorkflowStore.resetProcessingState();
+    scanWorkflowStore.resetWorkflow();
     setFile(undefined);
     setPages(0);
     setReview(emptyReview);
@@ -298,6 +298,7 @@ export function DigitalizacionProcess() {
     );
     setPhase("processing");
   }
+  async function cancelPreview(){const state=scanWorkflowStore.get();const source=state.acquisitionMode==='CZUR'?'CZUR':'MANUAL';const sessionId=state.sessionId??state.acquisitionSessionId;let partialFailure=false;if(source==='CZUR'&&sessionId){try{await czurDesktop.cancelSession(sessionId,true)}catch{partialFailure=true}}await import('../data/repository').then(({addAudit})=>addAudit('DOCUMENT_SCAN_CANCELLED','Centro de Digitalización',`Sesión ${sessionId?.slice(0,8)??'manual'} · Origen ${source} · Control previo`,partialFailure?'Parcial':'Exitoso')).catch(()=>{partialFailure=true});scanWorkflowStore.finishAcquisition('CANCELLED');scanWorkflowStore.resetWorkflow();clearCurrentScan();setPhase('config');if(partialFailure)setMessage('No se pudo cancelar completamente la sesión. Puede restablecerla iniciando un nuevo documento.')}
   function retryProcessing() {
     if (workflow.processingErrorCode !== "BACKEND_UNAVAILABLE") scanWorkflowStore.clearOcrJob();
     processingStartedRef.current = false;
@@ -445,6 +446,7 @@ export function DigitalizacionProcess() {
               file={file}
               pages={pages}
               onBack={() => setPhase("config")}
+              onCancel={cancelPreview}
               onContinue={acceptCleanPdf}
             />
           )}{" "}
