@@ -151,7 +151,7 @@ export function DigitalizacionProcess() {
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADING", currentStage: "PREPARING" });
         const upload = initial.uploadId
           ? { uploadId: initial.uploadId, documentId: initial.documentId, status: initial.uploadStatus ?? "COMPLETED" }
-          : await uploadCleanPdfFromSession({ sessionId: initial.sessionId, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber, file });
+          : await uploadCleanPdfFromSession({ sessionId: initial.sessionId, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber, folioRangeStart: folioRange?.start, folioRangeEnd: folioRange?.end, year: /^\d{4}$/.test(config.period) ? Number(config.period) : undefined, bienniumStart: config.period.includes('-') ? Number(config.period.slice(0,4)) : undefined, bienniumEnd: config.period.includes('-') ? Number(config.period.slice(5)) : undefined, file });
         if (!initial.uploadId) scanWorkflowStore.setUploadResult({ ...upload, status: "COMPLETED" });
         processTrace(`Upload completado: ${shortId(upload.uploadId)}`);
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADED", currentStage: "READING_PAGES", totalPages: "pageCount" in upload ? upload.pageCount : initial.totalPages });
@@ -194,7 +194,7 @@ export function DigitalizacionProcess() {
             }
             if (["FAILED", "CANCELLED"].includes(current.status)) {
               pollingActiveRef.current = false;
-              scanWorkflowStore.setProcessingFailure("OCR_ENGINE_FAILED", current.error ?? undefined);
+              scanWorkflowStore.setProcessingFailure(current.errorCode ?? "OCR_ENGINE_FAILED", current.error ?? undefined);
               return;
             }
             pollingTimeoutRef.current = setTimeout(() => void poll(), 2000);
@@ -218,7 +218,7 @@ export function DigitalizacionProcess() {
       }
     })();
     return cleanup;
-  }, [config.documentClass, config.registryTypeId, config.tomeNumber, phase, file, processingAttempt]);
+  }, [config.documentClass, config.folioQuantity, config.period, config.registryTypeId, config.tomeNumber, phase, file, processingAttempt]);
   function clearCurrentScan() {
     pollingActiveRef.current = false;
     if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);

@@ -36,6 +36,7 @@ export function processingStageLabels(currentStage?: string, status?: string): P
   return processingStageNames.map((_, index) => {
     if (index < current) return "Completado";
     if (index === current) return status === "FAILED" ? "Error" : "En proceso";
+    if (status === "FAILED") return "Pendiente";
     return current <= 0 ? "Pendiente de implementación" : "Pendiente";
   });
 }
@@ -54,6 +55,14 @@ export function friendlyProcessingError(code?: string) {
     UPLOAD_FAILED: "No se pudo enviar el documento.",
     OCR_START_FAILED: "No se pudo iniciar el reconocimiento.",
     OCR_ENGINE_FAILED: "No se pudo leer el documento.",
+    PDF_OPEN_FAILED: "No se pudo abrir el PDF preparado.",
+    PAGE_RENDER_FAILED: "No se pudo preparar la página para su lectura.",
+    IMAGE_PREPROCESSING_FAILED: "No se pudo preparar la imagen para su lectura.",
+    TESSERACT_NOT_FOUND: "El motor de reconocimiento no está disponible.",
+    TESSDATA_SPA_MISSING: "El idioma español no está disponible para el reconocimiento.",
+    OCR_RESULT_EMPTY: "El documento no produjo texto y requiere revisión.",
+    OCR_PAGE_SAVE_FAILED: "No se pudo guardar el resultado de la página.",
+    TEMP_UPLOAD_NOT_FOUND: "No se encontró el PDF temporal.",
     BACKEND_UNAVAILABLE: "No se pudo conectar con el servidor.",
     PROCESSING_JOB_NOT_FOUND: "No se encontró el proceso de lectura.",
     READ_CLEAN_FAILED: "No se pudo leer el PDF preparado.",

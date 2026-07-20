@@ -31,5 +31,12 @@ describe("estado real de Procesando", () => {
   it("traduce errores técnicos sin exponerlos en pantalla", () => {
     expect(friendlyProcessingError("BACKEND_UNAVAILABLE")).toBe("No se pudo conectar con el servidor.");
     expect(friendlyProcessingError("PROCESSING_JOB_NOT_FOUND")).toBe("No se encontró el proceso de lectura.");
+    expect(friendlyProcessingError("TESSERACT_NOT_FOUND")).toBe("El motor de reconocimiento no está disponible.");
+  });
+
+  it("marca solo la lectura como error si las demás etapas no iniciaron", () => {
+    expect(processingStageLabels("RUNNING_OCR", "FAILED")).toEqual([
+      "Error", "Pendiente", "Pendiente", "Pendiente", "Pendiente",
+    ]);
   });
 });
