@@ -11,9 +11,34 @@ const worker=path.join(vision,'processor.py');
 const pending:string[]=[];
 let activeJobId:string|undefined;
 type OcrResultPage={pageNumber?:number;rawText?:string;averageConfidence?:number;engine?:string};
-type PersistedField={fieldName:string;extractedValue:string;normalizedValue:string;confidence:number;requiresReview:boolean;sourceText?:string};
+type PersistedField={fieldName:string;extractedValue:string;normalizedValue:string;confidence:number;requiresReview:boolean;sourcePage?:number;sourceText?:string};
 
-export function extractScanFields(pages:OcrResultPage[]):PersistedField[]{const text=pages.map(page=>String(page.rawText??'')).join('\n').replace(/\s+/g,' ').trim();const value=(pattern:RegExp)=>pattern.exec(text)?.[1]?.trim()??'';const kardex=value(/(?:k(?:ardex|ardes|ardez)|c[oó]digo\s+kardex)\s*(?:n(?:[úu]mero|[.º°])?\s*)?[:.-]?\s*([0-9]{1,8})/i).replace(/^0+(?=\d)/,'');const minute=value(/minuta\s*(?:n(?:[úu]mero|[.º°])?\s*)?[:.-]?\s*([0-9]{1,8})/i);const instrument=/(escritura(?:\s+p[úu]blica)?|acta|poder|testamento|instrumento)\s*(?:n(?:[úu]mero|[.º°])?\s*)?[:.-]?\s*([0-9]{1,8})/i.exec(text);const contractor=value(/(?:comparece(?:n)?|otorgante(?:s)?|contratante(?:s)?|señor(?:a|es)?|a\s+favor\s+de)[\s:.-]+([^.;:\n]{5,100})/i).replace(/\s+(?:QUIEN|DECLARA|MANIFIESTA|OTORGA)\b.*$/i,'').trim();const candidates:[string,string][]=[['kardexNumber',kardex],['minuteNumber',minute],['instrumentType',instrument?.[1]?.toUpperCase()??''],['instrumentNumber',instrument?.[2]??''],['contractor',contractor]];return candidates.map(([fieldName,normalizedValue])=>({fieldName,extractedValue:normalizedValue,normalizedValue,confidence:normalizedValue.length?0.82:0,requiresReview:!normalizedValue,sourceText:normalizedValue?text.slice(0,500):undefined}))}
+const repairOcrText=(value:string)=>value.normalize('NFC').replace(/ZU�IGA/gi,'ZUÑIGA').replace(/SE�OR/gi,'SEÑOR').replace(/ACI�N/gi,'ACIÓN').replace(/�/g,' ').replace(/\s+/g,' ').trim();
+const evidence=(page:OcrResultPage,match:RegExpMatchArray)=>repairOcrText(String(page.rawText??'').slice(Math.max(0,(match.index??0)-35),(match.index??0)+match[0].length+55));
+export function extractScanFields(pages:OcrResultPage[]):PersistedField[]{
+  const normalized=pages.map(page=>({...page,text:repairOcrText(String(page.rawText??''))}));
+  const find=(pattern:RegExp)=>{for(const page of normalized){const match=page.text.match(pattern);if(match)return {page,match,value:repairOcrText(match[1]??match[0])}}};
+  const make=(fieldName:string,hit:ReturnType<typeof find>,confidence=.82,normalizedValue=hit?.value??''):PersistedField=>({fieldName,extractedValue:hit?.value??'',normalizedValue,confidence:hit?confidence:0,requiresReview:!hit||confidence<.8,sourcePage:hit?.page.pageNumber,sourceText:hit?evidence(hit.page,hit.match):undefined});
+  const kardex=find(/(?:k[\s.]*a[\s.]*r[\s.]*d[\s.]*[eé][\s.]*x|karoex|kard[.]|código\s+kardex)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([a-z]{0,3}-?[0-9]{1,8})/i);
+  const minute=find(/(?:minu[t7]a\s*(?:n(?:úmero|ro|[.º°])?\s*)|n(?:úmero|ro)[.]?\s+de\s+minuta\s*)[:.-]?\s*([0-9]{1,8})/i);
+  const folio=find(/(?:fojas?|folios?)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([0-9]{1,8})/i);
+  const instrument=find(/\b(poder\s+especial|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento|acta)(?:\s+n(?:úmero|ro|[.º°])?\s*[:.-]?\s*([0-9]{1,8}))?/i)??find(/\b(escritura(?:\s+pública)?|poder|instrumento)(?:\s+n(?:úmero|ro|[.º°])?\s*[:.-]?\s*([0-9]{1,8}))?/i);
+  const contractor=find(/a\s+favor\s+de\s+((?:don|doña)\s+[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,5})(?=\s*,|\s+de\s+nacionalidad|\s+identificad)/i)??find(/(?:otorga(?:nte)?|contratante|comparece)\s*(?:don|doña)?\s*[:.-]?\s*((?:don|doña)?\s*[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,5})(?=\s*,|\s+de\s+nacionalidad|\s+identificad)/i);
+  const date=find(/(?:fecha\s*[:.-]?\s*|a\s+los\s+)((?:[0-3]?\d[/-][01]?\d[/-](?:19|20)\d{2})|(?:[0-3]?\d\s+de\s+[a-záéíóú]+\s+de\s+(?:19|20)\d{2}))/i);
+  const legal=find(/\b(compraventa|donación|poder\s+especial|hipoteca|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento)\b/i);
+  const registryValue=instrument?/poder/i.test(instrument.value)?'poderes':/acta/i.test(instrument.value)?'actas':/testamento/i.test(instrument.value)?'testamentos':'escrituras-publicas':'';
+  const legalValue=legal?.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-')??'';
+  return [
+    make('kardexNumber',kardex,.86,kardex?.value.toUpperCase().replace(/^0+(?=\d)/,'')??''),
+    make('minuteNumber',minute),make('printedFolio',folio),
+    make('destinationRegistryType',instrument,.88,registryValue),
+    make('destinationInstrumentNumber',instrument?.match[2]?instrument:undefined,.84,instrument?.match[2]??''),
+    make('instrumentType',instrument,.88,instrument?.match[1]?.toUpperCase()??''),
+    make('instrumentNumber',instrument?.match[2]?instrument:undefined,.84,instrument?.match[2]??''),
+    make('documentDate',date,.78,date?.value??''),make('legalAct',legal,.9,legalValue),
+    make('primaryContractor',contractor,.84,contractor?.value.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ .'-]/g,'').replace(/\s+/g,' ').trim()??''),
+  ];
+}
 
 export async function enqueueOcrJob(jobId:string){const job=await prisma.documentProcessingJob.findUnique({where:{id:jobId}});if(!job)throw new Error('Trabajo documental inexistente.');if(['OCR_PROCESSING','REVIEW_REQUIRED','COMPLETED'].includes(job.status))return {jobId,status:job.status};if(activeJobId){if(!pending.includes(jobId))pending.push(jobId);await prisma.documentProcessingJob.update({where:{id:jobId},data:{status:'OCR_PENDING'}});return {jobId,status:'OCR_PENDING'}}activeJobId=jobId;await prisma.documentProcessingJob.update({where:{id:jobId},data:{status:'OCR_PROCESSING',errorMessage:null}});void runOcr(jobId,path.resolve(root,job.temporaryPath));return {jobId,status:'OCR_PROCESSING'}}
 async function startNext(){activeJobId=undefined;const jobId=pending.shift();if(!jobId)return;const job=await prisma.documentProcessingJob.findUnique({where:{id:jobId}});if(!job||job.status==='CANCELLED'){void startNext();return}activeJobId=jobId;await prisma.documentProcessingJob.update({where:{id:jobId},data:{status:'OCR_PROCESSING',errorMessage:null}});void runOcr(jobId,path.resolve(root,job.temporaryPath))}

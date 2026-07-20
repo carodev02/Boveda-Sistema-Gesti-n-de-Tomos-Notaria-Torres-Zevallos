@@ -21,7 +21,7 @@ import type {
 } from "../domain/document-domain";
 import { generateNormalizedFilename,normalizePdfFilename } from "../utils/documentFilename";
 import { uploadCleanPdfFromSession } from "../services/documentUploadService";
-import { ocrProcessingService } from "../services/ocrProcessingService";
+import { mapOcrFieldsToReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
 import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
 import { ApiError } from "../services/apiClient";
@@ -123,10 +123,10 @@ export function DigitalizacionProcess() {
   useEffect(()=>{void import("../data/repository").then(({getDocuments})=>getDocuments().then(rows=>setExistingFileNames(rows.map(row=>row.fileName))).catch(()=>undefined))},[]);
   useEffect(()=>{setProposedFileName(normalizedName)},[normalizedName]);
   useEffect(()=>{
-    const fields=workflow.extractedFields as Array<{fieldName?:string;normalizedValue?:string;extractedValue?:string}>|undefined;
+    const fields=workflow.extractedFields as OcrField[]|undefined;
     if(!fields?.length)return;
-    const read=(name:string)=>{const field=fields.find(item=>item.fieldName===name);return String(field?.normalizedValue||field?.extractedValue||'').trim()};
-    setReview(current=>({...current,kardexNumber:current.kardexNumber||read('kardexNumber'),minuteNumber:current.minuteNumber||read('minuteNumber'),instrumentType:current.instrumentType||read('instrumentType'),instrumentNumber:current.instrumentNumber||read('instrumentNumber'),primaryContractor:current.primaryContractor||read('contractor')}));
+    const detected=mapOcrFieldsToReview(fields);
+    setReview(current=>({...current,...Object.fromEntries(Object.entries(detected).filter(([key])=>!current[key as keyof ReviewValues]))}));
   },[workflow.extractedFields]);
   useEffect(() => {
     processingEffectMountedRef.current = true;
@@ -461,6 +461,7 @@ export function DigitalizacionProcess() {
               pages={pages}
               saving={saving}
               message={message}
+              reviewTargets={reviewTargetsFromOcrFields((workflow.reviewFields ?? []) as OcrField[])}
               onBack={() => setPhase("preview")}
               onArchive={applyProcessedName}
             />
@@ -669,6 +670,7 @@ function Review({
   pages,
   saving,
   message,
+  reviewTargets,
   onBack,
   onArchive,
 }: {
@@ -681,6 +683,7 @@ function Review({
   pages: number;
   saving: boolean;
   message: string;
+  reviewTargets:Set<keyof ReviewValues>;
   onBack: () => void;
   onArchive: () => void;
 }) {
@@ -703,31 +706,26 @@ function Review({
       <div className="locationCard">
         <b>Ubicación documental</b>
         <dl>
-          <dt>Clase documental</dt>
-          <dd>
+          <div><dt>Clase documental</dt><dd>
             {config.documentClass === "MINUTA" ? "Minuta" : "Registro notarial"}
-          </dd>
+          </dd></div>
           {config.documentClass === "REGISTRO_NOTARIAL" && (
-            <>
+            <div>
               <dt>Tipo de registro</dt>
               <dd>{registry?.name}</dd>
-            </>
+            </div>
           )}
-          <dt>Número de tomo</dt>
-          <dd>{config.tomeNumber || "No corresponde"}</dd>
-          <dt>Rango de fojas del tomo</dt>
-          <dd>{config.folioQuantity}</dd>
-          <dt>Año o bienio</dt>
-          <dd>{config.period}</dd>
-          <dt>Páginas del PDF</dt>
-          <dd>{pages}</dd>
+          <div><dt>Número de tomo</dt><dd>{config.tomeNumber || "No corresponde"}</dd></div>
+          <div><dt>Rango de fojas del tomo</dt><dd>{config.folioQuantity || "No corresponde"}</dd></div>
+          <div><dt>Año o bienio</dt><dd>{config.period}</dd></div>
+          <div><dt>Páginas del PDF</dt><dd>{pages}</dd></div>
         </dl>
       </div>
       <div className="reviewGrid domainReviewGrid">
         {config.documentClass === "REGISTRO_NOTARIAL" ? (
-          <RegistryFields values={values} update={update} />
+          <RegistryFields values={values} update={update} reviewTargets={reviewTargets} />
         ) : (
-          <MinuteFields values={values} update={update} />
+          <MinuteFields values={values} update={update} reviewTargets={reviewTargets} />
         )}
       </div>
       <div className="normalizedNamePreview">
@@ -750,9 +748,11 @@ function Review({
 function RegistryFields({
   values,
   update,
+  reviewTargets,
 }: {
   values: ReviewValues;
   update: (key: keyof ReviewValues, value: string) => void;
+  reviewTargets:Set<keyof ReviewValues>;
 }) {
   return (
     <>
@@ -760,36 +760,43 @@ function RegistryFields({
         label="Número de foja *"
         type="number"
         value={values.printedFolio}
+        requiresReview={reviewTargets.has("printedFolio")}
         onChange={(value) => update("printedFolio", value)}
       />
       <Field
         label="Número de minuta *"
         value={values.minuteNumber}
+        requiresReview={reviewTargets.has("minuteNumber")}
         onChange={(value) => update("minuteNumber", value)}
       />
       <Field
         label="Número de kardex *"
         value={values.kardexNumber}
+        requiresReview={reviewTargets.has("kardexNumber")}
         onChange={(value) => update("kardexNumber", value)}
       />
       <Field
         label="Tipo de instrumento *"
         value={values.instrumentType}
+        requiresReview={reviewTargets.has("instrumentType")}
         placeholder="Escritura, Acta, Poder..."
         onChange={(value) => update("instrumentType", value)}
       />
       <Field
         label="Número de instrumento *"
         value={values.instrumentNumber}
+        requiresReview={reviewTargets.has("instrumentNumber")}
         onChange={(value) => update("instrumentNumber", value)}
       />
       <Field
         label="Contratante principal relacionado *"
         value={values.primaryContractor}
+        requiresReview={reviewTargets.has("primaryContractor")}
         onChange={(value) => update("primaryContractor", value)}
       />
       <LegalActField
         value={values.legalActId}
+        requiresReview={reviewTargets.has("legalActId")}
         onChange={(value) => update("legalActId", value)}
       />
       {values.qrUrl && (
@@ -813,15 +820,18 @@ function RegistryFields({
 function MinuteFields({
   values,
   update,
+  reviewTargets,
 }: {
   values: ReviewValues;
   update: (key: keyof ReviewValues, value: string) => void;
+  reviewTargets:Set<keyof ReviewValues>;
 }) {
   return (
     <>
       <Field
         label="Número de kardex *"
         value={values.kardexNumber}
+        requiresReview={reviewTargets.has("kardexNumber")}
         onChange={(value) => update("kardexNumber", value)}
       />
       <label>
@@ -840,36 +850,43 @@ function MinuteFields({
             </option>
           ))}
         </select>
+        {reviewTargets.has("destinationRegistryTypeId")&&<small className="reviewHint">Requiere revisión</small>}
       </label>
       <Field
         label="Número del instrumento de destino"
         value={values.destinationInstrumentNumber}
+        requiresReview={reviewTargets.has("destinationInstrumentNumber")}
         onChange={(value) => update("destinationInstrumentNumber", value)}
       />
       <Field
         label="Número de minuta *"
         value={values.minuteNumber}
+        requiresReview={reviewTargets.has("minuteNumber")}
         onChange={(value) => update("minuteNumber", value)}
       />
       <Field
         label="Número de foja *"
         type="number"
         value={values.printedFolio}
+        requiresReview={reviewTargets.has("printedFolio")}
         onChange={(value) => update("printedFolio", value)}
       />
       <Field
         label="Fecha"
         type="date"
         value={values.documentDate}
+        requiresReview={reviewTargets.has("documentDate")}
         onChange={(value) => update("documentDate", value)}
       />
       <LegalActField
         value={values.legalActId}
+        requiresReview={reviewTargets.has("legalActId")}
         onChange={(value) => update("legalActId", value)}
       />
       <Field
         label="Contratante principal *"
         value={values.primaryContractor}
+        requiresReview={reviewTargets.has("primaryContractor")}
         onChange={(value) => update("primaryContractor", value)}
       />
     </>
@@ -881,12 +898,14 @@ function Field({
   onChange,
   type = "text",
   placeholder,
+  requiresReview=false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
+  requiresReview?:boolean;
 }) {
   return (
     <label>
@@ -895,18 +914,21 @@ function Field({
         className="field"
         type={type}
         value={value}
-        placeholder={placeholder}
+        placeholder={placeholder??(!value?'No detectado':undefined)}
         onChange={(event) => onChange(event.target.value)}
       />
+      {requiresReview&&<small className="reviewHint">Requiere revisión</small>}
     </label>
   );
 }
 function LegalActField({
   value,
   onChange,
+  requiresReview=false,
 }: {
   value: string;
   onChange: (value: string) => void;
+  requiresReview?:boolean;
 }) {
   return (
     <label>
@@ -923,6 +945,7 @@ function LegalActField({
           </option>
         ))}
       </select>
+      {requiresReview&&<small className="reviewHint">Requiere revisión</small>}
     </label>
   );
 }
