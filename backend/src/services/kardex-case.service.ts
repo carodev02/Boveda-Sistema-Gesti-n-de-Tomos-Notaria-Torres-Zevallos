@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type {Prisma} from '@prisma/client';
 
 export type KardexLocation={year?:number;bienniumStart?:number;bienniumEnd?:number;tomeNumber:string};
-export function normalizeKardex(value:unknown){let text=String(value??'').normalize('NFC').trim().toUpperCase().replace(/^KARDEX[\s:-]*/,'').replace(/^K[\s:-]+/,'').replace(/[\s_-]+/g,'');if(/^[0-9O]+$/.test(text))text=text.replace(/O/g,'0').replace(/^0+(?=\d)/,'');return text}
+export function normalizeKardex(value:unknown){let text=String(value??'').normalize('NFC').trim().toUpperCase().replace(/^KARDEX\s*(?:N(?:ÚMERO|UMERO|RO)?[\s.º°]*)?[:.-]?\s*/,'').replace(/[\s_-]+/g,'');if(/^K[0-9O]+$/.test(text))text=text.slice(1);if(/^[0-9O]+$/.test(text))text=text.replace(/O/g,'0').replace(/^0+(?=\d)/,'');return text}
 export function kardexPeriodKey(location:KardexLocation){if(location.year)return String(location.year);if(location.bienniumStart&&location.bienniumEnd)return `${location.bienniumStart}-${location.bienniumEnd}`;return 'SIN-PERIODO'}
 const kind=(documentType:string)=>/minuta/i.test(documentType)?'MINUTA':'ACTA';
 const comparable=(value:unknown)=>String(value??'').normalize('NFC').trim().toLocaleUpperCase('es-PE').replace(/\s+/g,' ');
