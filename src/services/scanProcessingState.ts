@@ -6,6 +6,10 @@ export const processingStageNames = [
   "Validación",
 ] as const;
 
+export function canStartProcessing(input:{phase:string;hasFile:boolean;started:boolean}) {
+  return input.phase === "processing" && input.hasFile && !input.started;
+}
+
 export type ProcessingStageLabel =
   | "Pendiente"
   | "En proceso"
@@ -41,6 +45,7 @@ export function processingSummary(currentStage?: string, status?: string) {
   if (status === "COMPLETED" || status === "REVIEW_REQUIRED" || currentStage === "COMPLETED" || currentStage === "REVIEW_REQUIRED") return { title: "Procesamiento completado", detail: "Los resultados están listos para revisión." };
   if (["EXTRACTING_FIELDS", "LINKING_KARDEX", "GENERATING_FILENAME", "VALIDATING"].includes(currentStage ?? "")) return { title: "Identificando campos", detail: "El sistema está buscando los datos notariales." };
   if (["READING_PAGES", "RUNNING_OCR"].includes(currentStage ?? "")) return { title: "Reconociendo contenido", detail: "El sistema está leyendo todas las páginas del documento." };
+  if (status === "UPLOADING") return { title: "Enviando documento", detail: "El documento se está enviando para su lectura." };
   return { title: "Preparando documento", detail: "El documento se está enviando para su lectura." };
 }
 
@@ -51,6 +56,7 @@ export function friendlyProcessingError(code?: string) {
     OCR_ENGINE_FAILED: "No se pudo leer el documento.",
     BACKEND_UNAVAILABLE: "No se pudo conectar con el servidor.",
     PROCESSING_JOB_NOT_FOUND: "No se encontró el proceso de lectura.",
+    READ_CLEAN_FAILED: "No se pudo leer el PDF preparado.",
   };
   return messages[code ?? ""] ?? "No se pudo completar el reconocimiento del documento.";
 }

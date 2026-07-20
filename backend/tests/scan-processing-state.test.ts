@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { friendlyProcessingError, processingStageLabels, processingSummary } from "../../src/services/scanProcessingState";
+import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingSummary } from "../../src/services/scanProcessingState";
 
 describe("estado real de Procesando", () => {
+  it("inicia un PDF manual aunque no exista una sesión nativa", () => {
+    expect(canStartProcessing({ phase: "processing", hasFile: true, started: false })).toBe(true);
+  });
   it("no completa etapas que el backend todavía no confirmó", () => {
     expect(processingStageLabels("RUNNING_OCR", "OCR_PROCESSING")).toEqual([
       "En proceso",

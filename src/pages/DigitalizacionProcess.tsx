@@ -23,7 +23,7 @@ import { generateNormalizedFilename,normalizePdfFilename } from "../utils/docume
 import { uploadCleanPdfFromSession } from "../services/documentUploadService";
 import { ocrProcessingService } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
-import { friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
+import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
 import { ApiError } from "../services/apiClient";
 import { czurDesktop } from "../services/czurDesktop";
 import "./digitalizacion.css";
@@ -52,6 +52,8 @@ function parseFolioRange(value: string) {
   return start <= end ? { start, end } : undefined;
 }
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+const processTrace=(message:string)=>{if(import.meta.env.DEV)console.debug(`[PROCESS] ${message}`)};
+const shortId=(value:string)=>`${value.slice(0,8)}…`;
 
 export function DigitalizacionProcess() {
   const [mode, setMode] = useState<Mode>("scan");
@@ -80,6 +82,9 @@ export function DigitalizacionProcess() {
   const pollingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const resultsLoadedRef = useRef(false);
   const reviewTransitionDoneRef = useRef(false);
+  const processingEffectMountedRef = useRef(false);
+  const phaseRef = useRef<Phase>(phase);
+  phaseRef.current = phase;
   const fileRef = useRef<HTMLInputElement>(null);
   const registryType = registryTypeById(config.registryTypeId);
   const periodValid =
@@ -124,28 +129,57 @@ export function DigitalizacionProcess() {
     setReview(current=>({...current,kardexNumber:current.kardexNumber||read('kardexNumber'),minuteNumber:current.minuteNumber||read('minuteNumber'),instrumentType:current.instrumentType||read('instrumentType'),instrumentNumber:current.instrumentNumber||read('instrumentNumber'),primaryContractor:current.primaryContractor||read('contractor')}));
   },[workflow.extractedFields]);
   useEffect(() => {
-    if (phase !== "processing" || !workflow.sessionId || !file || processingStartedRef.current) return;
+    processingEffectMountedRef.current = true;
+    const cleanup = () => {
+      processingEffectMountedRef.current = false;
+      setTimeout(() => {
+        if (processingEffectMountedRef.current && phaseRef.current === "processing") return;
+        pollingActiveRef.current = false;
+        if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
+      }, 0);
+    };
+    if (!canStartProcessing({phase, hasFile:Boolean(file), started:processingStartedRef.current})) return cleanup;
+    const initial = scanWorkflowStore.get();
+    processTrace("Inicio");
+    processTrace(`Store: sessionId=${initial.sessionId ? shortId(initial.sessionId) : "ninguno"}, cleanPdfReady=${initial.cleanPdfReady || Boolean(file)}, uploadId=${initial.uploadId ? shortId(initial.uploadId) : "ninguno"}, documentId=${initial.documentId ? shortId(initial.documentId) : "ninguno"}, ocrJobId=${initial.ocrJobId ? shortId(initial.ocrJobId) : "ninguno"}, uploadStatus=${initial.uploadStatus ?? "ninguno"}, ocrStatus=${initial.ocrStatus ?? "ninguno"}, uploadError=${initial.uploadError ? "sí" : "no"}, ocrError=${initial.ocrError ? "sí" : "no"}`);
+    if (initial.sessionId) processTrace("sessionId validado");
+    processTrace("cleanPdfReady validado");
     processingStartedRef.current = true;
     pollingActiveRef.current = true;
     void (async () => {
       try {
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADING", currentStage: "PREPARING" });
-        const upload = workflow.uploadId
-          ? { uploadId: workflow.uploadId, documentId: workflow.documentId, status: workflow.uploadStatus ?? "READY_FOR_OCR" }
-          : await uploadCleanPdfFromSession({ sessionId: workflow.sessionId!, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber, file });
-        if (!workflow.uploadId) scanWorkflowStore.setUploadResult(upload);
+        const upload = initial.uploadId
+          ? { uploadId: initial.uploadId, documentId: initial.documentId, status: initial.uploadStatus ?? "COMPLETED" }
+          : await uploadCleanPdfFromSession({ sessionId: initial.sessionId, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber, file });
+        if (!initial.uploadId) scanWorkflowStore.setUploadResult({ ...upload, status: "COMPLETED" });
+        processTrace(`Upload completado: ${shortId(upload.uploadId)}`);
+        scanWorkflowStore.setProcessingProgress({ status: "UPLOADED", currentStage: "READING_PAGES", totalPages: "pageCount" in upload ? upload.pageCount : initial.totalPages });
         let job: { jobId: string; status: string };
         try {
-          job = workflow.ocrJobId ? { jobId: workflow.ocrJobId, status: workflow.ocrStatus ?? "OCR_PENDING" } : await ocrProcessingService.start(upload.uploadId);
+          processTrace("Iniciando OCR");
+          if (initial.ocrJobId) job = { jobId: initial.ocrJobId, status: initial.ocrStatus ?? "OCR_PENDING" };
+          else {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 15000);
+            try { job = await ocrProcessingService.start(upload.uploadId, controller.signal); } finally { clearTimeout(timer); }
+          }
         } catch (error) {
-          scanWorkflowStore.setProcessingFailure(error instanceof ApiError && error.status >= 500 ? "BACKEND_UNAVAILABLE" : "OCR_START_FAILED");
+          const code = error instanceof ApiError && error.status >= 500 || error instanceof DOMException && error.name === "AbortError" ? "BACKEND_UNAVAILABLE" : "OCR_START_FAILED";
+          const detail = error instanceof Error ? error.message : undefined;
+          processTrace(`Error ${code}: ${detail ?? "sin detalle"}`);
+          scanWorkflowStore.setProcessingFailure(code, detail);
           return;
         }
-        if (!workflow.ocrJobId) scanWorkflowStore.setOcrJob(job.jobId, job.status);
+        if (!initial.ocrJobId) scanWorkflowStore.setOcrJob(job.jobId, job.status);
+        processTrace(`Job creado: ${shortId(job.jobId)}`);
+        scanWorkflowStore.setProcessingProgress({ status: job.status, currentStage: "RUNNING_OCR", totalPages: "pageCount" in upload ? upload.pageCount : initial.totalPages });
+        processTrace("Iniciando polling");
         const poll = async () => {
           if (!pollingActiveRef.current) return;
           try {
             const current = await ocrProcessingService.status(job.jobId);
+            processTrace(`Estado recibido: ${current.status}${current.currentStage ? ` / ${current.currentStage}` : ""}`);
             scanWorkflowStore.setProcessingProgress(current);
             if (["COMPLETED", "REVIEW_REQUIRED"].includes(current.status)) {
               const results = await ocrProcessingService.results(job.jobId);
@@ -167,21 +201,24 @@ export function DigitalizacionProcess() {
           } catch (error) {
             pollingActiveRef.current = false;
             const code = error instanceof ApiError && error.status === 404 ? "PROCESSING_JOB_NOT_FOUND" : "BACKEND_UNAVAILABLE";
-            scanWorkflowStore.setProcessingFailure(code);
+            const detail = error instanceof Error ? error.message : undefined;
+            processTrace(`Error ${code}: ${detail ?? "sin detalle"}`);
+            scanWorkflowStore.setProcessingFailure(code, detail);
           }
         };
         void poll();
       } catch (error) {
         pollingActiveRef.current = false;
-        const code = error instanceof ApiError && error.status >= 500 ? "BACKEND_UNAVAILABLE" : "UPLOAD_FAILED";
-        scanWorkflowStore.setProcessingFailure(code);
+        const readFailure = error instanceof Error && error.message === "No se pudo leer el PDF preparado.";
+        const code = readFailure ? "READ_CLEAN_FAILED" : error instanceof ApiError && error.status >= 500 || error instanceof DOMException && error.name === "AbortError" ? "BACKEND_UNAVAILABLE" : "UPLOAD_FAILED";
+        const detail = readFailure ? "No se pudo leer el PDF preparado." : error instanceof Error ? error.message : undefined;
+        processTrace(`Error ${code}: ${detail ?? "sin detalle"}`);
+        scanWorkflowStore.setUploadError(detail);
+        scanWorkflowStore.setProcessingFailure(code, detail);
       }
     })();
-    return () => {
-      pollingActiveRef.current = false;
-      if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
-    };
-  }, [config.documentClass, config.registryTypeId, config.tomeNumber, phase, file, workflow.ocrJobId, workflow.sessionId, workflow.uploadId, processingAttempt]);
+    return cleanup;
+  }, [config.documentClass, config.registryTypeId, config.tomeNumber, phase, file, processingAttempt]);
   function clearCurrentScan() {
     pollingActiveRef.current = false;
     if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
