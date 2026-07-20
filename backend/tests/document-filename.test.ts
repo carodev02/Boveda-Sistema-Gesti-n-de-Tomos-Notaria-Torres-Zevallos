@@ -3,6 +3,7 @@ import {generateNormalizedFilename,normalizePdfFilename} from '../../src/utils/d
 
 describe('nombre propuesto del PDF CZUR',()=>{
   it('propone K-kardex para minuta',()=>expect(generateNormalizedFilename({kardexNumber:'468',documentClass:'MINUTA'})).toBe('K-468.pdf'));
+  it('elimina la K usada como etiqueta OCR antes del número',()=>expect(generateNormalizedFilename({contractor:'NIÑO ZÚÑIGA CAMPOS',kardexNumber:'K41245',documentClass:'REGISTRO_NOTARIAL',instrumentNumber:'468'})).toBe('NIÑO ZÚÑIGA CAMPOS - KARDEX 41245 - ESCRITURA 468.pdf'));
   it('mantiene K-kardex aunque también se detecte contratante',()=>expect(generateNormalizedFilename({contractor:'María: Pérez',kardexNumber:'468',documentClass:'MINUTA'})).toBe('K-468.pdf'));
   it('propone escritura sin inventar el número',()=>{
     expect(generateNormalizedFilename({contractor:'María Pérez',kardexNumber:'468',documentClass:'REGISTRO_NOTARIAL'})).toBe('María Pérez - KARDEX 468.pdf');

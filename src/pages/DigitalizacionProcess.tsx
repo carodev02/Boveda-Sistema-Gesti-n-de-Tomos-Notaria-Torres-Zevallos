@@ -287,7 +287,9 @@ export function DigitalizacionProcess() {
       }
     }
   }
-  function acceptCleanPdf(clean: File) {
+  async function acceptCleanPdf(clean: File) {
+    const sessionId=scanWorkflowStore.get().sessionId;
+    if(sessionId){try{await czurDesktop.storeCleanPdf(sessionId,new Uint8Array(await clean.arrayBuffer()))}catch{setMessage('No se pudo guardar la copia procesada. Inténtelo nuevamente.');return}}
     scanWorkflowStore.resetProcessingState();
     scanWorkflowStore.setCleanPdfReady(true);
     setFile(clean);
@@ -314,7 +316,7 @@ export function DigitalizacionProcess() {
     reviewTransitionDoneRef.current = false;
     setProcessingAttempt((value) => value + 1);
   }
-  async function applyProcessedName(){if(!file)return;setApplyingName(true);setMessage('');try{const safeName=normalizePdfFilename(proposedFileName,existingFileNames);const sessionId=scanWorkflowStore.get().sessionId;const finalName=sessionId?await czurDesktop.applyProcessedFilename(sessionId,safeName):safeName;scanWorkflowStore.setProcessedFilename(finalName);setFile(current=>current?new File([current],finalName,{type:'application/pdf',lastModified:current.lastModified}):current);setProposedFileName(finalName);setAppliedFilename(finalName);setMessage(`Nombre aplicado correctamente: ${finalName}`);return finalName}catch{setMessage('No se pudo aplicar el nombre a la copia procesada.');return undefined}finally{setApplyingName(false)}}
+  async function applyProcessedName(){if(!file)return;setApplyingName(true);setMessage('');try{const safeName=normalizePdfFilename(proposedFileName,existingFileNames);const sessionId=scanWorkflowStore.get().sessionId;let finalName=safeName;if(sessionId){try{finalName=await czurDesktop.applyProcessedFilename(sessionId,safeName)}catch{await czurDesktop.storeCleanPdf(sessionId,new Uint8Array(await file.arrayBuffer()));finalName=await czurDesktop.applyProcessedFilename(sessionId,safeName)}}scanWorkflowStore.setProcessedFilename(finalName);setFile(current=>current?new File([current],finalName,{type:'application/pdf',lastModified:current.lastModified}):current);setProposedFileName(finalName);setAppliedFilename(finalName);setMessage(`Nombre aplicado correctamente: ${finalName}`);return finalName}catch{setMessage('No se pudo aplicar el nombre a la copia procesada.');return undefined}finally{setApplyingName(false)}}
   async function confirmDocument() {
     if (!file) return;
     const required = [

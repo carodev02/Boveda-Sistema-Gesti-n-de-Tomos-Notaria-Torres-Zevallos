@@ -29,7 +29,7 @@ export function normalizePdfFilename(value:string,existingNames?:Iterable<string
 }
 
 export function generateNormalizedFilename(input:NormalizedFilenameInput){
-  const kardex=cleanPart(input.kardexNumber??'');
+  const kardex=cleanPart(input.kardexNumber??'').replace(/^K(?=\d)/i,'');
   if(!kardex)return normalizePdfFilename('DOCUMENTO - REVISAR',input.existingNames);
   if(input.documentClass==='MINUTA')return normalizePdfFilename(`K-${kardex}`,input.existingNames);
   const contractor=cleanPart(input.contractor??'');
