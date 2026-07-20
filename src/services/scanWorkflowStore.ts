@@ -35,6 +35,7 @@ export const scanWorkflowStore={
  setUploadError:(uploadError?:string)=>{state={...state,uploadError};emit()},
  resetProcessingState:()=>{state={...state,uploadId:undefined,documentId:undefined,ocrJobId:undefined,uploadStatus:undefined,ocrStatus:undefined,currentStage:undefined,processedPages:undefined,totalPages:undefined,progress:undefined,processingErrorCode:undefined,uploadError:undefined,ocrError:undefined,ocrPages:undefined,extractedFields:undefined,confirmedFields:undefined,reviewFields:undefined,reviewCount:undefined,documentLocation:undefined,documentClass:undefined,cleanPdfReady:false};emit()},
  resetWorkflow:()=>{state={...initial,acquisitionMode:state.acquisitionMode,acquisitionStatus:state.acquisitionStatus,acquisitionSessionId:state.acquisitionSessionId};emit()},
+ cancelCurrentDocument:()=>{state={...initial};emit()},
  recoverSession:(session:ScanSession)=>scanWorkflowStore.setSession(session),
 };
 export function useScanWorkflow(){return useSyncExternalStore(scanWorkflowStore.subscribe,scanWorkflowStore.get,scanWorkflowStore.get)}
