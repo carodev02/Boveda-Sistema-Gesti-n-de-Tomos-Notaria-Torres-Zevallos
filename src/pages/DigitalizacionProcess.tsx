@@ -305,9 +305,9 @@ export function DigitalizacionProcess() {
     setPhase("processing");
   }
   function cancelPreview(){
-    const state=scanWorkflowStore.get();const source=state.acquisitionMode==='CZUR'?'CZUR':'MANUAL';const sessionId=state.sessionId??state.acquisitionSessionId;
+    const state=scanWorkflowStore.get();const source=state.acquisitionMode==='CZUR'?'CZUR':'MANUAL';const sessionId=state.sessionId;const acquisitionId=state.acquisitionSessionId;
     scanWorkflowStore.cancelCurrentDocument();clearCurrentScan();setMode('scan');setPhase('config');
-    void (async()=>{let partialFailure=false;if(source==='CZUR'&&sessionId){const timeout=new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('CANCEL_TIMEOUT')),4000));try{await Promise.race([czurDesktop.cancelSession(sessionId,true),timeout])}catch{partialFailure=true}}await import('../data/repository').then(({addAudit})=>addAudit('DOCUMENT_SCAN_CANCELLED','Centro de Digitalización',`Sesión ${sessionId?.slice(0,8)??'manual'} · Origen ${source} · Control previo`,partialFailure?'Parcial':'Exitoso')).catch(()=>{partialFailure=true});if(partialFailure&&scanWorkflowStore.get().acquisitionMode==='IDLE')setMessage('No se pudo cancelar completamente la sesión. Puede restablecerla iniciando un nuevo documento.')})();
+    void (async()=>{let partialFailure=false;if(source==='CZUR'&&acquisitionId){const timeout=new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('CANCEL_TIMEOUT')),4000));try{await Promise.race([czurDesktop.cancelSession(acquisitionId,false),timeout]);if(sessionId&&sessionId!==acquisitionId)await czurDesktop.cancelSession(sessionId,true)}catch{partialFailure=true}}await import('../data/repository').then(({addAudit})=>addAudit('DOCUMENT_SCAN_CANCELLED','Centro de Digitalización',`Sesión ${(sessionId??acquisitionId)?.slice(0,8)??'manual'} · Origen ${source} · Control previo`,partialFailure?'Parcial':'Exitoso')).catch(()=>{partialFailure=true});if(partialFailure&&scanWorkflowStore.get().acquisitionMode==='IDLE')setMessage('No se pudo cancelar completamente la sesión. Puede restablecerla iniciando un nuevo documento.')})();
   }
   function retryProcessing() {
     if (workflow.processingErrorCode !== "BACKEND_UNAVAILABLE") scanWorkflowStore.clearOcrJob();
