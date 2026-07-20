@@ -14,17 +14,19 @@ type OcrResultPage={pageNumber?:number;rawText?:string;averageConfidence?:number
 type PersistedField={fieldName:string;extractedValue:string;normalizedValue:string;confidence:number;requiresReview:boolean;sourcePage?:number;sourceText?:string};
 
 const repairOcrText=(value:string)=>value.normalize('NFC').replace(/ZU�IGA/gi,'ZUÑIGA').replace(/SE�OR/gi,'SEÑOR').replace(/ACI�N/gi,'ACIÓN').replace(/�/g,' ').replace(/\s+/g,' ').trim();
+const normalizeOcrDate=(value:string)=>{const numeric=value.match(/^(\d{1,2})[/-](\d{1,2})[/-]((?:19|20)\d{2})$/);if(numeric)return `${numeric[3]!}-${numeric[2]!.padStart(2,'0')}-${numeric[1]!.padStart(2,'0')}`;const words=value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/^(\d{1,2})\s+(?:de\s+)?([a-z]{3,10})\s+(?:de\s+)?((?:19|20)\d{2})$/);if(!words)return value;const months=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];const month=months.findIndex(item=>words[2]!.startsWith(item));return month<0?value:`${words[3]!}-${String(month+1).padStart(2,'0')}-${words[1]!.padStart(2,'0')}`};
 const evidence=(page:OcrResultPage,match:RegExpMatchArray)=>repairOcrText(String(page.rawText??'').slice(Math.max(0,(match.index??0)-35),(match.index??0)+match[0].length+55));
 export function extractScanFields(pages:OcrResultPage[]):PersistedField[]{
   const normalized=pages.map(page=>({...page,text:repairOcrText(String(page.rawText??''))}));
   const find=(pattern:RegExp)=>{for(const page of normalized){const match=page.text.match(pattern);if(match)return {page,match,value:repairOcrText(match[1]??match[0])}}};
   const make=(fieldName:string,hit:ReturnType<typeof find>,confidence=.82,normalizedValue=hit?.value??''):PersistedField=>({fieldName,extractedValue:hit?.value??'',normalizedValue,confidence:hit?confidence:0,requiresReview:!hit||confidence<.8,sourcePage:hit?.page.pageNumber,sourceText:hit?evidence(hit.page,hit.match):undefined});
-  const kardex=find(/(?:kardex_header|k[\s.]*a[\s.]*r[\s.]*d[\s.]*[eé][\s.]*x|karoex|kard[.]|código\s+kardex)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([a-z]{0,3}-?[0-9]{1,8})/i);
-  const minute=find(/(?:minute_header|minu[t7]a\s*(?:n(?:úmero|ro|[.º°])?\s*)|n(?:úmero|ro)[.]?\s+de\s+minuta\s*)[:.-]?\s*([0-9]{1,8})/i);
-  const folio=find(/(?:fojas?|folios?)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([0-9]{1,8})/i);
-  const instrument=find(/\b(poder\s+especial|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento|acta)(?:\s+n(?:úmero|ro|[.º°])?\s*[:.-]?\s*([0-9]{1,8}))?/i)??find(/\b(escritura(?:\s+pública)?|poder|instrumento)(?:\s+n(?:úmero|ro|[.º°])?\s*[:.-]?\s*([0-9]{1,8}))?/i);
+  const numberLabel=String.raw`n(?:úmero|ro|[º°]|\.\s*[º°])?`;
+  const kardex=find(new RegExp(String.raw`(?:kardex_header|k[\s.]*a[\s.]*r[\s.]*d[\s.]*[eé][\s.]*x|karoex|kard[.]|código\s+kardex)\s*(?:${numberLabel}\s*)?[:.-]?\s*([a-z]{0,3}-?[0-9]{1,8})`,'i'))??find(/\bk\s*[-:]\s*([0-9]{3,8})\b/i);
+  const minute=find(new RegExp(String.raw`(?:minute_header|minu[t7]a\s*(?:${numberLabel}\s*)|${numberLabel}[.]?\s+de\s+minuta\s*)[:.-]?\s*([0-9]{1,8})`,'i'));
+  const folio=find(new RegExp(String.raw`(?:fojas?|folios?)\s*(?:${numberLabel}\s*)?[:.-]?\s*([0-9]{1,8})`,'i'));
+  const instrument=find(new RegExp(String.raw`\b(poder\s+especial|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento|acta)(?:\s+${numberLabel}\s*[:.-]?\s*([0-9]{1,8}))?`,'i'))??find(new RegExp(String.raw`\b(escritura(?:\s+pública)?|poder|instrumento)(?:\s+${numberLabel}\s*[:.-]?\s*([0-9]{1,8}))?`,'i'));
   const contractor=find(/a\s+favor\s+de\s+((?:don|doña)\s+[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,5})(?=\s*,|\s+de\s+nacionalidad|\s+identificad)/i)??find(/(?:otorga(?:nte)?|contratante|comparece)\s*(?:don|doña)?\s*[:.-]?\s*((?:don|doña)?\s*[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,5})(?=\s*,|\s+de\s+nacionalidad|\s+identificad)/i);
-  const date=find(/(?:fecha\s*[:.-]?\s*|a\s+los\s+)((?:[0-3]?\d[/-][01]?\d[/-](?:19|20)\d{2})|(?:[0-3]?\d\s+de\s+[a-záéíóú]+\s+de\s+(?:19|20)\d{2}))/i);
+  const date=find(/(?:fecha\s*[:.-]?\s*|a\s+los\s+)((?:[0-3]?\d[/-][01]?\d[/-](?:19|20)\d{2})|(?:[0-3]?\d\s+(?:de\s+)?[a-záéíóú]{3,10}\s+(?:de\s+)?(?:19|20)\d{2}))/i);
   const legal=find(/\b(compraventa|donación|poder\s+especial|hipoteca|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento)\b/i);
   const registryValue=instrument?/poder/i.test(instrument.value)?'poderes':/acta/i.test(instrument.value)?'actas':/testamento/i.test(instrument.value)?'testamentos':'escrituras-publicas':'';
   const legalValue=legal?.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-')??'';
@@ -35,7 +37,7 @@ export function extractScanFields(pages:OcrResultPage[]):PersistedField[]{
     make('destinationInstrumentNumber',instrument?.match[2]?instrument:undefined,.84,instrument?.match[2]??''),
     make('instrumentType',instrument,.88,instrument?.match[1]?.toUpperCase()??''),
     make('instrumentNumber',instrument?.match[2]?instrument:undefined,.84,instrument?.match[2]??''),
-    make('documentDate',date,.78,date?.value??''),make('legalAct',legal,.9,legalValue),
+    make('documentDate',date,.78,date?normalizeOcrDate(date.value):''),make('legalAct',legal,.9,legalValue),
     make('primaryContractor',contractor,.84,contractor?.value.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ .'-]/g,'').replace(/\s+/g,' ').trim()??''),
   ];
 }

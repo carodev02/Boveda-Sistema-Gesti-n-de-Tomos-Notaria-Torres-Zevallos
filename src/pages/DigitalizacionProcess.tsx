@@ -22,7 +22,7 @@ import type {
 } from "../domain/document-domain";
 import { generateNormalizedFilename,normalizePdfFilename } from "../utils/documentFilename";
 import {processAcquiredDocument} from "../services/acquiredDocumentProcessing";
-import { findOcrField,mapOcrFieldsToReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
+import { findOcrField,mergeOcrFieldsIntoReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
 import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
 import { ApiError } from "../services/apiClient";
@@ -76,6 +76,8 @@ export function DigitalizacionProcess() {
   const [proposedFileName,setProposedFileName]=useState("DOCUMENTO - REVISAR.pdf");
   const [existingFileNames,setExistingFileNames]=useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [applyingName,setApplyingName]=useState(false);
+  const [appliedFilename,setAppliedFilename]=useState<string>();
   const [scanInstance, setScanInstance] = useState(0);
   const [processingAttempt, setProcessingAttempt] = useState(0);
   const workflow = useScanWorkflow();
@@ -84,6 +86,8 @@ export function DigitalizacionProcess() {
   const pollingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const resultsLoadedRef = useRef(false);
   const reviewTransitionDoneRef = useRef(false);
+  const manuallyEditedFieldsRef=useRef(new Set<keyof ReviewValues>());
+  const ocrJobAppliedRef=useRef<string|undefined>(undefined);
   const processingEffectMountedRef = useRef(false);
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
@@ -127,10 +131,10 @@ export function DigitalizacionProcess() {
   useEffect(()=>{if(phase==='review')processTrace(`[REVIEW] campos mostrados: ${(scanWorkflowStore.get().extractedFields??[]).length}`)},[phase]);
   useEffect(()=>{
     const fields=workflow.extractedFields as OcrField[]|undefined;
-    if(!fields?.length)return;
-    const detected=mapOcrFieldsToReview(fields);
-    setReview(current=>({...current,...Object.fromEntries(Object.entries(detected).filter(([key])=>!current[key as keyof ReviewValues]))}));
-  },[workflow.extractedFields]);
+    if(!fields?.length||!workflow.ocrJobId||ocrJobAppliedRef.current===workflow.ocrJobId)return;
+    setReview(current=>mergeOcrFieldsIntoReview(current,fields,manuallyEditedFieldsRef.current));
+    ocrJobAppliedRef.current=workflow.ocrJobId;
+  },[workflow.extractedFields,workflow.ocrJobId]);
   useEffect(() => {
     processingEffectMountedRef.current = true;
     const cleanup = () => {
@@ -218,12 +222,15 @@ export function DigitalizacionProcess() {
     processingStartedRef.current = false;
     resultsLoadedRef.current = false;
     reviewTransitionDoneRef.current = false;
+    manuallyEditedFieldsRef.current.clear();
+    ocrJobAppliedRef.current=undefined;
     scanWorkflowStore.resetProcessingState();
     setFile(undefined);
     setPages(0);
     setReview(emptyReview);
     setProcessingStatus("PENDING");
     setSaving(false);
+    setAppliedFilename(undefined);
     setMessage("");
     if (fileRef.current) fileRef.current.value = "";
     setScanInstance((value) => value + 1);
@@ -298,6 +305,7 @@ export function DigitalizacionProcess() {
     reviewTransitionDoneRef.current = false;
     setProcessingAttempt((value) => value + 1);
   }
+  async function applyProcessedName(){if(!file)return;setApplyingName(true);setMessage('');try{const safeName=normalizePdfFilename(proposedFileName,existingFileNames);const sessionId=scanWorkflowStore.get().sessionId;const finalName=sessionId?await czurDesktop.applyProcessedFilename(sessionId,safeName):safeName;scanWorkflowStore.setProcessedFilename(finalName);setFile(current=>current?new File([current],finalName,{type:'application/pdf',lastModified:current.lastModified}):current);setProposedFileName(finalName);setAppliedFilename(finalName);setMessage(`Nombre aplicado correctamente: ${finalName}`);return finalName}catch{setMessage('No se pudo aplicar el nombre a la copia procesada.');return undefined}finally{setApplyingName(false)}}
   async function confirmDocument() {
     if (!file) return;
     const required = [
@@ -317,7 +325,8 @@ export function DigitalizacionProcess() {
     setSaving(true);
     setMessage("");
     try {
-      const safeName = normalizePdfFilename(proposedFileName, existingFileNames);
+      const safeName = appliedFilename===proposedFileName?appliedFilename:await applyProcessedName();
+      if(!safeName)throw new Error('No se pudo aplicar el nombre a la copia procesada.');
       const processedCopy = new File([file], safeName, {
         type: "application/pdf",
         lastModified: file.lastModified,
@@ -457,16 +466,20 @@ export function DigitalizacionProcess() {
               config={config}
               values={review}
               setValues={setReview}
+              onManualChange={(key,value)=>{manuallyEditedFieldsRef.current.add(key);setReview(current=>({...current,[key]:value}))}}
               normalizedName={normalizedName}
               proposedFileName={proposedFileName}
               setProposedFileName={setProposedFileName}
               pages={pages}
               saving={saving}
+              applyingName={applyingName}
+              appliedFilename={appliedFilename}
               message={message}
               reviewTargets={reviewTargetsFromOcrFields((workflow.extractedFields ?? []) as OcrField[])}
               ocrFields={(workflow.extractedFields??[]) as OcrField[]}
               onBack={() => setPhase("preview")}
               onConfirm={confirmDocument}
+              onApplyName={applyProcessedName}
             />
           )}{" "}
           {phase === "archived" && (
@@ -667,33 +680,40 @@ function Review({
   config,
   values,
   setValues,
+  onManualChange,
   normalizedName,
   proposedFileName,
   setProposedFileName,
   pages,
   saving,
+  applyingName,
+  appliedFilename,
   message,
   reviewTargets,
   ocrFields,
   onBack,
   onConfirm,
+  onApplyName,
 }: {
   config: ScanConfiguration;
   values: ReviewValues;
   setValues: React.Dispatch<React.SetStateAction<ReviewValues>>;
+  onManualChange:(key:keyof ReviewValues,value:string)=>void;
   normalizedName: string;
   proposedFileName:string;
   setProposedFileName:(value:string)=>void;
   pages: number;
   saving: boolean;
+  applyingName:boolean;
+  appliedFilename?:string;
   message: string;
   reviewTargets:Set<keyof ReviewValues>;
   ocrFields:OcrField[];
   onBack: () => void;
   onConfirm: () => void | Promise<void>;
+  onApplyName:()=>void|Promise<unknown>;
 }) {
-  const update = (key: keyof ReviewValues, value: string) =>
-    setValues((current) => ({ ...current, [key]: value }));
+  const update = onManualChange;
   const registry = registryTypeById(config.registryTypeId);
   return (
     <section className="card validationCard phaseOneReview">
@@ -743,10 +763,12 @@ function Review({
         <button className="btn" onClick={onBack}>
           Volver
         </button>
-        <button className="btn primary" disabled={saving} onClick={onConfirm}>
+        <button className="btn" disabled={applyingName||saving} onClick={onApplyName}>{applyingName?'Aplicando nombre…':'Aplicar nombre a la copia procesada'}</button>
+        <button className="btn primary" disabled={saving||applyingName} onClick={onConfirm}>
           {saving ? "Confirmando…" : "Confirmar documento"}
         </button>
       </footer>
+      {appliedFilename&&<small>Nombre final aplicado: {appliedFilename}</small>}
     </section>
   );
 }

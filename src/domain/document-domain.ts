@@ -233,6 +233,7 @@ export interface ScanSession{
   temporaryCopyPath?:string;
   originalFileName?:string;
   cleanPdfPath?:string;
+  cleanPdfFilename?:string;
   pageCount:number;
   status:ScanSessionStatus;
   error?:string;

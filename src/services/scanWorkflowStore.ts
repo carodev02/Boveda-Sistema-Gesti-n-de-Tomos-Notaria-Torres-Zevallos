@@ -4,7 +4,7 @@ import type {DetectedScanFile} from './czurDesktop';
 
 export type AcquisitionMode='IDLE'|'CZUR'|'MANUAL';
 export type AcquisitionStatus='IDLE'|'STARTING'|'WAITING_FOR_FILE'|'FILE_DETECTED'|'PREPARING'|'READY_FOR_PREVIEW'|'FAILED'|'CANCELLED'|'COMPLETED';
-export type ScanWorkflowState={acquisitionMode:AcquisitionMode;acquisitionStatus:AcquisitionStatus;acquisitionSessionId?:string;configuration?:ScanConfiguration;sessionId?:string;sessionStatus?:string;originalFilename?:string;pageCount:number;pages:ScanPage[];selectedPageId?:string;detectedFiles:DetectedScanFile[];cleanPdfReady:boolean;processingError?:string;uploadId?:string;documentId?:string;ocrJobId?:string;uploadStatus?:string;ocrStatus?:string;currentStage?:string;processedPages?:number;totalPages?:number;progress?:number;processingErrorCode?:string;uploadError?:string;ocrError?:string;ocrPages?:unknown[];extractedFields?:unknown[];confirmedFields?:unknown[];reviewFields?:unknown[];reviewCount?:number;documentLocation?:Record<string,unknown>;documentClass?:string};
+export type ScanWorkflowState={acquisitionMode:AcquisitionMode;acquisitionStatus:AcquisitionStatus;acquisitionSessionId?:string;configuration?:ScanConfiguration;sessionId?:string;sessionStatus?:string;originalFilename?:string;pageCount:number;pages:ScanPage[];selectedPageId?:string;detectedFiles:DetectedScanFile[];cleanPdfReady:boolean;cleanPdfFilename?:string;processingError?:string;uploadId?:string;documentId?:string;ocrJobId?:string;uploadStatus?:string;ocrStatus?:string;currentStage?:string;processedPages?:number;totalPages?:number;progress?:number;processingErrorCode?:string;uploadError?:string;ocrError?:string;ocrPages?:unknown[];extractedFields?:unknown[];confirmedFields?:unknown[];reviewFields?:unknown[];reviewCount?:number;documentLocation?:Record<string,unknown>;documentClass?:string};
 const initial:ScanWorkflowState={acquisitionMode:'IDLE',acquisitionStatus:'IDLE',pageCount:0,pages:[],detectedFiles:[],cleanPdfReady:false};let state=initial;const listeners=new Set<()=>void>();
 const emit=()=>listeners.forEach(listener=>listener());
 export const scanWorkflowStore={
@@ -15,8 +15,9 @@ export const scanWorkflowStore={
  recoverAcquisition:(mode:Exclude<AcquisitionMode,'IDLE'>,status:AcquisitionStatus,sessionId:string)=>{if(state.acquisitionMode==='IDLE'){state={...state,acquisitionMode:mode,acquisitionStatus:status,acquisitionSessionId:sessionId};emit()}},
  finishAcquisition:(status:'COMPLETED'|'CANCELLED'|'FAILED')=>{state={...state,acquisitionMode:'IDLE',acquisitionStatus:status,acquisitionSessionId:undefined};emit()},
  setConfiguration:(configuration:ScanConfiguration)=>{state={...state,configuration};emit()},
- setSession:(session:ScanSession)=>{state={...state,sessionId:session.id,sessionStatus:session.status,originalFilename:session.originalFileName,pageCount:session.pageCount,pages:session.pages,selectedPageId:session.pages[0]?.id,cleanPdfReady:Boolean(session.cleanPdfPath),processingError:session.error??undefined};emit()},
+ setSession:(session:ScanSession)=>{state={...state,sessionId:session.id,sessionStatus:session.status,originalFilename:session.originalFileName,pageCount:session.pageCount,pages:session.pages,selectedPageId:session.pages[0]?.id,cleanPdfReady:Boolean(session.cleanPdfPath),cleanPdfFilename:session.cleanPdfFilename,processingError:session.error??undefined};emit()},
  setCleanPdfReady:(ready:boolean)=>{state={...state,cleanPdfReady:ready};emit()},
+ setProcessedFilename:(cleanPdfFilename:string)=>{state={...state,cleanPdfFilename};emit()},
  setPages:(pages:ScanPage[])=>{state={...state,pages,pageCount:pages.length,selectedPageId:state.selectedPageId??pages[0]?.id};emit()},
  updatePage:(page:ScanPage)=>{state={...state,pages:state.pages.map(item=>item.id===page.id?page:item)};emit()},
  selectPage:(id:string)=>{state={...state,selectedPageId:id};emit()},

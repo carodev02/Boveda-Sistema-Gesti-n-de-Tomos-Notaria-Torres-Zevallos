@@ -25,4 +25,10 @@ describe('campos OCR del flujo CZUR',()=>{
     expect(fields.find(field=>field.fieldName==='kardexNumber')?.normalizedValue).toBe('41245');
     expect(fields.find(field=>field.fieldName==='minuteNumber')?.normalizedValue).toBe('462');
   });
+  it('distingue Kardex, minuta, foja, escritura y fecha con etiquetas notariales',()=>{
+    const fields=extractScanFields([{pageNumber:2,rawText:'KARDEX N.º 41245 MINUTA N° 462 FOJA 1360 ESCRITURA PÚBLICA N.º 468 FECHA 01 ABR 2026'}]);
+    const value=(name:string)=>fields.find(field=>field.fieldName===name)?.normalizedValue;
+    expect(value('kardexNumber')).toBe('41245');expect(value('minuteNumber')).toBe('462');expect(value('printedFolio')).toBe('1360');expect(value('destinationInstrumentNumber')).toBe('468');expect(value('documentDate')).toBe('2026-04-01');
+  });
+  it('acepta la forma aislada K-41245 sin tomar otros números',()=>expect(extractScanFields([{pageNumber:1,rawText:'DNI 08628371 K-41245 teléfono 999999999'}]).find(field=>field.fieldName==='kardexNumber')?.normalizedValue).toBe('41245'));
 });

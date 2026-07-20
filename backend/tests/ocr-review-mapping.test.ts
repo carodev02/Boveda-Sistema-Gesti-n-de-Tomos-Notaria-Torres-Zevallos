@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {mapOcrFieldsToReview} from '../../src/services/ocrProcessingService';
+import {mapOcrFieldsToReview,mergeOcrFieldsIntoReview,normalizeExtractedFieldName} from '../../src/services/ocrProcessingService';
 
 describe('mapeo OCR a Revisión mínima',()=>{
   it('normaliza nombres canónicos y aliases sin ocultar campos en revisión',()=>{
@@ -22,4 +22,6 @@ describe('mapeo OCR a Revisión mínima',()=>{
       {fieldName:'PRIMARYCONTRACTOR',extractedValue:'DON NARCISO ZUÑIGA CHAVEZ'},
     ])).toMatchObject({destinationRegistryTypeId:'poderes',destinationInstrumentNumber:'119',minuteNumber:'462',printedFolio:'1360',documentDate:'2026-04-07',legalActId:'poder-especial',primaryContractor:'DON NARCISO ZUÑIGA CHAVEZ'});
   });
+  it('normaliza claves canónicas sin distinguir formato',()=>expect(['KARDEXNUMBER','kardex_number','Kardex Number'].map(normalizeExtractedFieldName)).toEqual(['kardexnumber','kardexnumber','kardexnumber']));
+  it('sincroniza resultados tardíos sin borrar correcciones manuales',()=>{const current={kardexNumber:'41246',minuteNumber:'',printedFolio:'',instrumentType:'',instrumentNumber:'',destinationRegistryTypeId:'',destinationInstrumentNumber:'',documentDate:'',legalActId:'',primaryContractor:'',qrUrl:''};const merged=mergeOcrFieldsIntoReview(current,[{fieldName:'kardexNumber',normalizedValue:'41245'},{fieldName:'minuteNumber',normalizedValue:'462'}],new Set(['kardexNumber']));expect(merged.kardexNumber).toBe('41246');expect(merged.minuteNumber).toBe('462')});
 });

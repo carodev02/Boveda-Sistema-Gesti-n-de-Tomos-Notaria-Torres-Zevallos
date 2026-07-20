@@ -31,6 +31,7 @@ export const czurDesktop={
   updatePages:(sessionId:string,pages:ScanSession['pages'])=>call<ScanSession>('update_scan_pages',{sessionId,pages}),
   generateCleanPdf:(sessionId:string)=>call<ScanSession>('generate_clean_pdf',{sessionId}),
   readCleanPdf:(sessionId:string)=>call<number[]>('read_clean_pdf',{sessionId}),
+  applyProcessedFilename:(sessionId:string,proposedFilename:string)=>call<string>('apply_processed_filename',{sessionId,proposedFilename}),
   recoverSessions:()=>call<ScanSession[]>('recover_scan_sessions'),
   listSessions:(offset=0,limit=100)=>call<ScanSession[]>('list_scan_sessions',{offset,limit}),
   resumeQueue:()=>call<number>('resume_scan_queue'),
