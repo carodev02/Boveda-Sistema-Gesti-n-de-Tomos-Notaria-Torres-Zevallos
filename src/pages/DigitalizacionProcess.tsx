@@ -15,7 +15,6 @@ import {
 import { saveDocument, type DocumentRecord } from "../data/repository";
 import type {
   DocumentClass,
-  ProcessingStatus,
   ReviewValues,
   ScanConfiguration,
   ScanSession,
@@ -70,8 +69,6 @@ export function DigitalizacionProcess() {
   const [file, setFile] = useState<File>();
   const [pages, setPages] = useState(0);
   const [message, setMessage] = useState("");
-  const [processingStatus, setProcessingStatus] =
-    useState<ProcessingStatus>("PENDING");
   const [review, setReview] = useState<ReviewValues>(emptyReview);
   const [proposedFileName,setProposedFileName]=useState("DOCUMENTO - REVISAR.pdf");
   const [existingFileNames,setExistingFileNames]=useState<string[]>([]);
@@ -120,7 +117,6 @@ export function DigitalizacionProcess() {
     [
       config.documentClass,
       review.instrumentNumber,
-      review.instrumentType,
       review.kardexNumber,
       review.primaryContractor,
       existingFileNames,
@@ -228,7 +224,6 @@ export function DigitalizacionProcess() {
     setFile(undefined);
     setPages(0);
     setReview(emptyReview);
-    setProcessingStatus("PENDING");
     setSaving(false);
     setAppliedFilename(undefined);
     setMessage("");
@@ -293,7 +288,6 @@ export function DigitalizacionProcess() {
     scanWorkflowStore.resetProcessingState();
     scanWorkflowStore.setCleanPdfReady(true);
     setFile(clean);
-    setProcessingStatus("PROCESSING");
     setMessage("");
     void import("../data/repository").then(({ addAudit }) =>
       addAudit(
@@ -391,10 +385,8 @@ export function DigitalizacionProcess() {
       if (acquisition.acquisitionMode === "CZUR" && acquisition.acquisitionSessionId)
         await czurDesktop.completeAcquisition(acquisition.acquisitionSessionId).catch(() => undefined);
       scanWorkflowStore.finishAcquisition("COMPLETED");
-      setProcessingStatus("COMPLETED");
       navigate(`/documentos?confirmed=${encodeURIComponent(saved.backendId ?? String(saved.id))}`);
     } catch (error) {
-      setProcessingStatus("FAILED");
       setMessage(
         error instanceof Error
           ? error.message
@@ -477,7 +469,6 @@ export function DigitalizacionProcess() {
             <Review
               config={config}
               values={review}
-              setValues={setReview}
               onManualChange={(key,value)=>{manuallyEditedFieldsRef.current.add(key);setReview(current=>({...current,[key]:value}))}}
               normalizedName={normalizedName}
               proposedFileName={proposedFileName}
@@ -691,7 +682,6 @@ function Processing({
 function Review({
   config,
   values,
-  setValues,
   onManualChange,
   normalizedName,
   proposedFileName,
@@ -709,7 +699,6 @@ function Review({
 }: {
   config: ScanConfiguration;
   values: ReviewValues;
-  setValues: React.Dispatch<React.SetStateAction<ReviewValues>>;
   onManualChange:(key:keyof ReviewValues,value:string)=>void;
   normalizedName: string;
   proposedFileName:string;
