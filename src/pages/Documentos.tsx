@@ -13,16 +13,17 @@ const instrument=(document:DocumentRecord)=>[document.tipo,document.escritura].f
 export function Documentos(){
   const navigate=useNavigate();
   const [params]=useSearchParams();
-  const {documents,loading}=useDocuments(false);
+  const {documents,loading,error,refresh}=useDocuments(false);
   const [query,setQuery]=useState(params.get('q')??'');
   const [page,setPage]=useState(1);
   const pageSize=10;
   const registered=useMemo(()=>documents.filter(document=>document.documentMode==='actual').sort((left,right)=>new Date(right.fechaRegistro).getTime()-new Date(left.fechaRegistro).getTime()),[documents]);
-  const filtered=useMemo(()=>{const needle=searchable(query.trim());if(!needle)return registered;return registered.filter(document=>searchable([document.fileName,document.kardex,...document.contratantes,document.numeroMinuta,document.tipo,document.escritura,document.tomo,document.ano,document.bienio].join(' ')).includes(needle))},[query,registered]);
+  const filtered=useMemo(()=>{const needle=searchable(query.trim());if(!needle)return registered;return registered.filter(document=>searchable([document.fileName,document.kardex,...document.contratantes,document.numeroMinuta,document.tipo,document.actoJuridico,document.escritura,document.tomo,document.ano,document.bienio].join(' ')).includes(needle))},[query,registered]);
   const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const currentPage=Math.min(page,totalPages);
   const shown=filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
   function showData(document:DocumentRecord){window.alert([`Archivo: ${document.fileName}`,`Clase documental: ${document.tipo||'—'}`,`Kardex: ${document.kardex||'—'}`,`Contratante principal: ${document.contratantes[0]||'—'}`,`Acto jurídico: ${document.actoJuridico||'—'}`,`Instrumento: ${instrument(document)}`,`Tomo: ${document.tomo||'—'}`,`Foja: ${folios(document)}`,`Año o bienio: ${period(document)}`,`Fecha de registro: ${new Date(document.fechaRegistro).toLocaleString('es-PE')}`].join('\n'))}
+  if(!loading&&error)return <div className="page-content docsPage"><section className="card tableCard documentsTableCard"><div className="documentsEmpty compactDocumentsEmpty"><p>No se pudieron cargar los documentos: {error}</p><button className="btn" onClick={()=>void refresh()}>Reintentar</button></div></section></div>;
   return <div className="page-content docsPage">
     <section className="card documentsControls simpleDocumentsControls"><div className="docSearch"><Search size={15}/><input value={query} onChange={event=>{setQuery(event.target.value);setPage(1)}} placeholder="Buscar por archivo, kardex, contratante, minuta, instrumento, tomo o periodo..."/></div><button className="btn documentsAiButton" onClick={()=>navigate('/asistente?scope=documents')}><Bot size={14}/>Consultar con IA</button></section>
     <section className="card tableCard documentsTableCard">

@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, FileArchive, FileText } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import * as pdfjs from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { ContractorConflictAlert } from "../components/ContractorConflictAlert";
@@ -56,6 +57,7 @@ const processTrace=(message:string)=>{if(import.meta.env.DEV)console.debug(`[PRO
 const shortId=(value:string)=>`${value.slice(0,8)}…`;
 
 export function DigitalizacionProcess() {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("scan");
   const [phase, setPhase] = useState<Phase>("config");
   const [config, setConfig] = useState<ScanConfiguration>({
@@ -304,17 +306,7 @@ export function DigitalizacionProcess() {
     reviewTransitionDoneRef.current = false;
     setProcessingAttempt((value) => value + 1);
   }
-  function applyProcessedName(){
-    if(!file)return;
-    const safeName=normalizePdfFilename(proposedFileName,existingFileNames);
-    setProposedFileName(safeName);
-    setFile(new File([file],safeName,{type:'application/pdf',lastModified:file.lastModified}));
-    setMessage(`Nombre aplicado a la copia procesada: ${safeName}. El PDF original de CZUR permanece intacto.`);
-    const acquisition=scanWorkflowStore.get();
-    if(acquisition.acquisitionMode==='CZUR'&&acquisition.acquisitionSessionId)void czurDesktop.completeAcquisition(acquisition.acquisitionSessionId).catch(()=>undefined);
-    scanWorkflowStore.finishAcquisition('COMPLETED');
-  }
-  async function archiveDocument() {
+  async function confirmDocument() {
     if (!file) return;
     const required = [
       review.kardexNumber,
@@ -333,13 +325,21 @@ export function DigitalizacionProcess() {
     setSaving(true);
     setMessage("");
     try {
+      const safeName = normalizePdfFilename(proposedFileName, existingFileNames);
+      const processedCopy = new File([file], safeName, {
+        type: "application/pdf",
+        lastModified: file.lastModified,
+      });
+      setProposedFileName(safeName);
       const [start, end] = config.period.split("-").map(Number);
       const acto =
         activeLegalActs().find((item) => item.id === review.legalActId)?.name ??
         "";
       const record: DocumentRecord = {
         id: Date.now(),
-        documentMode: end ? "historico" : "actual",
+        // Todo documento confirmado por este flujo es un registro vigente de
+        // Gestión Documental; el bienio describe su período, no su origen.
+        documentMode: "actual",
         tipo:
           config.documentClass === "REGISTRO_NOTARIAL"
             ? (registryType?.name ?? "Registro notarial")
@@ -361,16 +361,21 @@ export function DigitalizacionProcess() {
         fecha: review.documentDate,
         fechaRegistro: new Date().toLocaleDateString("es-PE"),
         cantidadPaginas: pages,
-        documento: "En revisión",
-        ocr: "Pendiente de integración",
-        fileName: file.name,
-        fileSize: file.size,
-        file,
+        documento: "CONFIRMED",
+        ocr: "PROCESSED",
+        fileName: safeName,
+        fileSize: processedCopy.size,
+        file: processedCopy,
         source: "manual",
+        processingJobId: workflow.uploadId,
       };
-      await saveDocument(record);
+      const saved = await saveDocument(record);
+      const acquisition = scanWorkflowStore.get();
+      if (acquisition.acquisitionMode === "CZUR" && acquisition.acquisitionSessionId)
+        await czurDesktop.completeAcquisition(acquisition.acquisitionSessionId).catch(() => undefined);
+      scanWorkflowStore.finishAcquisition("COMPLETED");
       setProcessingStatus("COMPLETED");
-      setPhase("archived");
+      navigate(`/documentos?confirmed=${encodeURIComponent(saved.backendId ?? String(saved.id))}`);
     } catch (error) {
       setProcessingStatus("FAILED");
       setMessage(
@@ -463,7 +468,7 @@ export function DigitalizacionProcess() {
               message={message}
               reviewTargets={reviewTargetsFromOcrFields((workflow.reviewFields ?? []) as OcrField[])}
               onBack={() => setPhase("preview")}
-              onArchive={applyProcessedName}
+              onConfirm={confirmDocument}
             />
           )}{" "}
           {phase === "archived" && (
@@ -672,7 +677,7 @@ function Review({
   message,
   reviewTargets,
   onBack,
-  onArchive,
+  onConfirm,
 }: {
   config: ScanConfiguration;
   values: ReviewValues;
@@ -685,7 +690,7 @@ function Review({
   message: string;
   reviewTargets:Set<keyof ReviewValues>;
   onBack: () => void;
-  onArchive: () => void;
+  onConfirm: () => void | Promise<void>;
 }) {
   const update = (key: keyof ReviewValues, value: string) =>
     setValues((current) => ({ ...current, [key]: value }));
@@ -738,8 +743,8 @@ function Review({
         <button className="btn" onClick={onBack}>
           Volver
         </button>
-        <button className="btn primary" disabled={saving} onClick={onArchive}>
-          Aplicar nombre a la copia procesada
+        <button className="btn primary" disabled={saving} onClick={onConfirm}>
+          {saving ? "Confirmando…" : "Confirmar documento"}
         </button>
       </footer>
     </section>
