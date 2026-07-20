@@ -107,6 +107,8 @@ model Document {
   documentType      String
   year              Int?
   biennium          String?
+  bienniumStart     Int?
+  bienniumEnd       Int?
   tomo              String
   fojaInitial       Int?
   fojaFinal         Int?

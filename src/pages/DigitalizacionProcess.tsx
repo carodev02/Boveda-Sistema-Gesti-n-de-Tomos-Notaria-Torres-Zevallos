@@ -346,6 +346,8 @@ export function DigitalizacionProcess() {
             : "Minuta",
         ano: end ? undefined : start,
         bienio: end ? config.period : undefined,
+        bienniumStart: end ? start : undefined,
+        bienniumEnd: end,
         tomo: config.tomeNumber,
         fojaInicial: Number(review.printedFolio) || undefined,
         fojaFinal: undefined,
