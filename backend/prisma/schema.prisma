@@ -110,6 +110,9 @@ model Document {
   bienniumStart     Int?
   bienniumEnd       Int?
   tomo              String
+  folioRangeStart   Int?
+  folioRangeEnd     Int?
+  printedFolio      Int?
   fojaInitial       Int?
   fojaFinal         Int?
   escritura         String?
