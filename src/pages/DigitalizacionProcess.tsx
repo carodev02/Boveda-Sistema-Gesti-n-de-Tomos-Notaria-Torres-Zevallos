@@ -269,12 +269,16 @@ export function DigitalizacionProcess() {
     }
   }
   async function receiveNativeSession(session: ScanSession) {
+    const acquisitionId=session.acquisitionId??session.id;
+    const isCurrent=()=>{const current=scanWorkflowStore.get();return current.acquisitionMode==='CZUR'&&current.acquisitionSessionId===acquisitionId};
+    if(session.sourceType==='CZUR'&&!isCurrent())return;
     scanWorkflowStore.setConfiguration(config);
     scanWorkflowStore.setSession(session);
     setMessage(session.error ?? "Sesión recibida desde SIGADN Desktop.");
     if (session.status === "READY_FOR_REVIEW") {
       try {
         const bytes = await czurDesktop.readOriginal(session.id);
+        if(session.sourceType==='CZUR'&&!isCurrent())return;
         setFile(new File([new Uint8Array(bytes)], session.originalFileName ?? "scan-original.pdf", {type:"application/pdf"}));
         setPages(session.pageCount);
         setPhase("preview");

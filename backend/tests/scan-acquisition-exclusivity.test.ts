@@ -35,4 +35,5 @@ describe('exclusividad de adquisición',()=>{
     scanWorkflowStore.finishAcquisition('CANCELLED');
   });
   it('restablece atómicamente el documento actual',()=>{scanWorkflowStore.beginAcquisition('CZUR','session-active');scanWorkflowStore.setCleanPdfReady(true);scanWorkflowStore.setUploadResult({uploadId:'upload-active',status:'UPLOADED'});scanWorkflowStore.cancelCurrentDocument();expect(scanWorkflowStore.get()).toEqual(expect.objectContaining({acquisitionMode:'IDLE',acquisitionStatus:'IDLE',pageCount:0,pages:[],cleanPdfReady:false}));expect(scanWorkflowStore.get().sessionId).toBeUndefined();expect(scanWorkflowStore.get().uploadId).toBeUndefined()});
+  it('invalida la sesión anterior inmediatamente después de cancelar',()=>{scanWorkflowStore.beginAcquisition('CZUR','session-stale');scanWorkflowStore.cancelCurrentDocument();expect(scanWorkflowStore.get().acquisitionMode).toBe('IDLE');expect(scanWorkflowStore.get().acquisitionSessionId).toBeUndefined()});
 });
