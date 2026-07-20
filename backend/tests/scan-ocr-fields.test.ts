@@ -31,4 +31,13 @@ describe('campos OCR del flujo CZUR',()=>{
     expect(value('kardexNumber')).toBe('41245');expect(value('minuteNumber')).toBe('462');expect(value('printedFolio')).toBe('1360');expect(value('destinationInstrumentNumber')).toBe('468');expect(value('documentDate')).toBe('2026-04-01');
   });
   it('acepta la forma aislada K-41245 sin tomar otros números',()=>expect(extractScanFields([{pageNumber:1,rawText:'DNI 08628371 K-41245 teléfono 999999999'}]).find(field=>field.fieldName==='kardexNumber')?.normalizedValue).toBe('41245'));
+  it('normaliza K41245 y conserva la escritura aunque antes aparezca el acto',()=>{
+    const fields=extractScanFields([{pageNumber:1,rawText:'KARDEX K41245 PODER ESPECIAL QUE OTORGA DON ANA MARIA TORRES CAMPOS, IDENTIFICADA CON DNI. ESCRITURA PÚBLICA N° 468'}]);
+    const value=(name:string)=>fields.find(field=>field.fieldName===name)?.normalizedValue;
+    expect(value('kardexNumber')).toBe('41245');expect(value('instrumentNumber')).toBe('468');expect(value('instrumentType')).toBe('PODER ESPECIAL');expect(value('primaryContractor')).toBe('ANA MARIA TORRES CAMPOS');
+  });
+  it('prioriza los marcadores dirigidos del encabezado',()=>{
+    const fields=extractScanFields([{pageNumber:1,rawText:'KARDEX 999 MINUTA 777 KARDEX_HEADER 41245 MINUTE_HEADER 462'}]);
+    expect(fields.find(field=>field.fieldName==='kardexNumber')?.normalizedValue).toBe('41245');expect(fields.find(field=>field.fieldName==='minuteNumber')?.normalizedValue).toBe('462');
+  });
 });

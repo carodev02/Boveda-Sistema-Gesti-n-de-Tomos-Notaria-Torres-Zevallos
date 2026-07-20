@@ -29,16 +29,24 @@ export function extractScanFields(pages:OcrResultPage[]):PersistedField[]{
   const date=find(/(?:fecha\s*[:.-]?\s*|a\s+los\s+)((?:[0-3]?\d[/-][01]?\d[/-](?:19|20)\d{2})|(?:[0-3]?\d\s+(?:de\s+)?[a-záéíóú]{3,10}\s+(?:de\s+)?(?:19|20)\d{2}))/i);
   const legal=find(/\b(compraventa|donación|poder\s+especial|hipoteca|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento)\b/i);
   const registryValue=instrument?/poder/i.test(instrument.value)?'poderes':/acta/i.test(instrument.value)?'actas':/testamento/i.test(instrument.value)?'testamentos':'escrituras-publicas':'';
+  const directedKardex=find(/KARDEX_HEADER\s+([A-Z]{0,3}-?\d{1,8})/i);
+  const directedMinute=find(/MINUTE_HEADER\s+(\d{1,8})/i);
+  const explicitInstrumentNumber=find(new RegExp(String.raw`(?:escritura(?:\s+pública)?|instrumento)\s*(?:${numberLabel}\s*)?[:.-]?\s*([0-9]{1,8})`,'i'))??find(/(?:^|\s)E\s*[.:º°-]\s*(\d{1,8})(?=\s|$)/i);
+  const explicitInstrumentType=find(/\b(poder\s+especial|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento|acta|escritura\s+pública|poder)\b/i);
+  const completeContractor=contractor??find(/(?:que\s+otorga|otorgada?\s+por)\s*(?:el\s+señor|la\s+señora|señor(?:a)?|don|doña)?\s*[:.-]?\s*((?:don|doña)?\s*[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,7})(?=\s*,|\s+de\s+nacionalidad|\s+identificad|\s+con\s+dni|\s+domiciliad|\s+quien)/i);
+  const completeDate=date??find(/(?:lima|callao)\s*,?\s*(?:a\s+)?los?\s+((?:[0-3]?\d[/-][01]?\d[/-](?:19|20)\d{2})|(?:[0-3]?\d\s+(?:de\s+)?[a-záéíóú]{3,10}\s+(?:de\s+)?(?:19|20)\d{2}))/i);
+  const selectedKardex=directedKardex??kardex,selectedMinute=directedMinute??minute,selectedInstrumentNumber=explicitInstrumentNumber??(instrument?.match[2]?instrument:undefined),selectedInstrumentType=explicitInstrumentType??instrument;
+  const selectedRegistryValue=selectedInstrumentType?/poder/i.test(selectedInstrumentType.value)?'poderes':/acta/i.test(selectedInstrumentType.value)?'actas':/testamento/i.test(selectedInstrumentType.value)?'testamentos':'escrituras-publicas':selectedInstrumentNumber?'escrituras-publicas':registryValue;
   const legalValue=legal?.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-')??'';
   return [
-    make('kardexNumber',kardex,.86,kardex?.value.toUpperCase().replace(/^0+(?=\d)/,'')??''),
-    make('minuteNumber',minute),make('printedFolio',folio),
-    make('destinationRegistryType',instrument,.88,registryValue),
-    make('destinationInstrumentNumber',instrument?.match[2]?instrument:undefined,.84,instrument?.match[2]??''),
-    make('instrumentType',instrument,.88,instrument?.match[1]?.toUpperCase()??''),
-    make('instrumentNumber',instrument?.match[2]?instrument:undefined,.84,instrument?.match[2]??''),
-    make('documentDate',date,.78,date?normalizeOcrDate(date.value):''),make('legalAct',legal,.9,legalValue),
-    make('primaryContractor',contractor,.84,contractor?.value.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ .'-]/g,'').replace(/\s+/g,' ').trim()??''),
+    make('kardexNumber',selectedKardex,.86,selectedKardex?.value.toUpperCase().replace(/^[A-Z]{1,3}-?(?=\d)/,'').replace(/^0+(?=\d)/,'')??''),
+    make('minuteNumber',selectedMinute),make('printedFolio',folio),
+    make('destinationRegistryType',selectedInstrumentType??selectedInstrumentNumber,.88,selectedRegistryValue),
+    make('destinationInstrumentNumber',selectedInstrumentNumber,.84,selectedInstrumentNumber?.value??''),
+    make('instrumentType',selectedInstrumentType,.88,selectedInstrumentType?.value.toUpperCase()??''),
+    make('instrumentNumber',selectedInstrumentNumber,.84,selectedInstrumentNumber?.value??''),
+    make('documentDate',completeDate,.78,completeDate?normalizeOcrDate(completeDate.value):''),make('legalAct',legal,.9,legalValue),
+    make('primaryContractor',completeContractor,.84,completeContractor?.value.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ .'-]/g,'').replace(/\s+/g,' ').trim()??''),
   ];
 }
 
