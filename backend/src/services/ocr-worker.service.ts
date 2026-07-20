@@ -19,8 +19,8 @@ export function extractScanFields(pages:OcrResultPage[]):PersistedField[]{
   const normalized=pages.map(page=>({...page,text:repairOcrText(String(page.rawText??''))}));
   const find=(pattern:RegExp)=>{for(const page of normalized){const match=page.text.match(pattern);if(match)return {page,match,value:repairOcrText(match[1]??match[0])}}};
   const make=(fieldName:string,hit:ReturnType<typeof find>,confidence=.82,normalizedValue=hit?.value??''):PersistedField=>({fieldName,extractedValue:hit?.value??'',normalizedValue,confidence:hit?confidence:0,requiresReview:!hit||confidence<.8,sourcePage:hit?.page.pageNumber,sourceText:hit?evidence(hit.page,hit.match):undefined});
-  const kardex=find(/(?:k[\s.]*a[\s.]*r[\s.]*d[\s.]*[eé][\s.]*x|karoex|kard[.]|código\s+kardex)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([a-z]{0,3}-?[0-9]{1,8})/i);
-  const minute=find(/(?:minu[t7]a\s*(?:n(?:úmero|ro|[.º°])?\s*)|n(?:úmero|ro)[.]?\s+de\s+minuta\s*)[:.-]?\s*([0-9]{1,8})/i);
+  const kardex=find(/(?:kardex_header|k[\s.]*a[\s.]*r[\s.]*d[\s.]*[eé][\s.]*x|karoex|kard[.]|código\s+kardex)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([a-z]{0,3}-?[0-9]{1,8})/i);
+  const minute=find(/(?:minute_header|minu[t7]a\s*(?:n(?:úmero|ro|[.º°])?\s*)|n(?:úmero|ro)[.]?\s+de\s+minuta\s*)[:.-]?\s*([0-9]{1,8})/i);
   const folio=find(/(?:fojas?|folios?)\s*(?:n(?:úmero|ro|[.º°])?\s*)?[:.-]?\s*([0-9]{1,8})/i);
   const instrument=find(/\b(poder\s+especial|transferencia\s+vehicular|constitución\s+de\s+empresa|testamento|acta)(?:\s+n(?:úmero|ro|[.º°])?\s*[:.-]?\s*([0-9]{1,8}))?/i)??find(/\b(escritura(?:\s+pública)?|poder|instrumento)(?:\s+n(?:úmero|ro|[.º°])?\s*[:.-]?\s*([0-9]{1,8}))?/i);
   const contractor=find(/a\s+favor\s+de\s+((?:don|doña)\s+[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,5})(?=\s*,|\s+de\s+nacionalidad|\s+identificad)/i)??find(/(?:otorga(?:nte)?|contratante|comparece)\s*(?:don|doña)?\s*[:.-]?\s*((?:don|doña)?\s*[a-záéíóúñü]+(?:\s+[a-záéíóúñü]+){1,5})(?=\s*,|\s+de\s+nacionalidad|\s+identificad)/i);

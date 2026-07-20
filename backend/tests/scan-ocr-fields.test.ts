@@ -20,4 +20,9 @@ describe('campos OCR del flujo CZUR',()=>{
     expect(field('destinationInstrumentNumber')?.requiresReview).toBe(true);
     expect(field('primaryContractor')?.sourcePage).toBe(1);
   });
+  it('reconoce el Kardex recuperado por la pasada dirigida al encabezado',()=>{
+    const fields=extractScanFields([{pageNumber:1,rawText:'PODER ESPECIAL\nKARDEX_HEADER 41245\nMINUTE_HEADER 462'}]);
+    expect(fields.find(field=>field.fieldName==='kardexNumber')?.normalizedValue).toBe('41245');
+    expect(fields.find(field=>field.fieldName==='minuteNumber')?.normalizedValue).toBe('462');
+  });
 });

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -194,6 +195,40 @@ def recognize(source: Path, session: Path) -> dict:
                     labels = sum(label in raw_text.lower() for label in ("kardex", "minuta", "escritura", "notario", "foja"))
                     candidates.append({"rawText": raw_text, "words": words, "averageConfidence": confidence, "score": len(raw_text) + confidence * 2 + labels * 50, "variant": variant_name, "psm": psm})
             best = max(candidates, key=lambda item: item["score"])
+            # El Kardex impreso suele estar aislado en el encabezado. Una lectura global
+            # con alta confianza puede omitirlo aunque lea bien el cuerpo mecanografiado.
+            page_mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)[1]
+            contours, _ = cv2.findContours(page_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                px, py, pw, ph = cv2.boundingRect(max(contours, key=cv2.contourArea))
+                sheet = rendered[py:py + ph, px:px + pw]
+                serial_roi = sheet[int(ph * .02):int(ph * .17), int(pw * .08):int(pw * .47)]
+                serial_path = Path(temp) / f"page-{index:04}-kardex.png"
+                cv2.imwrite(str(serial_path), cv2.resize(serial_roi, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC))
+                serial_base = Path(temp) / f"ocr-{index:04}-kardex"
+                serial_run = subprocess.run([executable, str(serial_path), str(serial_base), "-l", "spa", "--psm", "11", "-c", "tessedit_create_txt=1"], env=environment, capture_output=True, text=True)
+                serial_text = serial_base.with_suffix(".txt").read_text(encoding="utf-8", errors="replace") if serial_run.returncode == 0 and serial_base.with_suffix(".txt").is_file() else ""
+                serial_candidates = re.findall(r"(?<!\d)\d{4,8}(?!\d)", serial_text.replace(" ", ""))
+                if serial_candidates:
+                    best["rawText"] += f"\nKARDEX_HEADER {serial_candidates[0]}"
+                    ocr_log(f"Kardex de encabezado detectado: {serial_candidates[0]}")
+                minute_roi = sheet[int(ph * .038):int(ph * .073), int(pw * .545):int(pw * .615)]
+                minute_roi = cv2.resize(minute_roi, None, fx=5, fy=5, interpolation=cv2.INTER_CUBIC)
+                minute_lab = cv2.cvtColor(minute_roi, cv2.COLOR_BGR2LAB)[:, :, 1]
+                minute_mask = cv2.copyMakeBorder(255 - cv2.inRange(minute_lab, 135, 255), 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
+                minute_path = Path(temp) / f"page-{index:04}-minute.png"
+                cv2.imwrite(str(minute_path), minute_mask)
+                minute_reads = []
+                for minute_psm in (6, 7, 10, 11):
+                    minute_base = Path(temp) / f"ocr-{index:04}-minute-{minute_psm}"
+                    minute_run = subprocess.run([executable, str(minute_path), str(minute_base), "-l", "spa", "--psm", str(minute_psm), "-c", "tessedit_char_whitelist=0123456789", "-c", "tessedit_create_txt=1"], env=environment, capture_output=True, text=True)
+                    minute_text = minute_base.with_suffix(".txt").read_text(encoding="utf-8", errors="replace") if minute_run.returncode == 0 and minute_base.with_suffix(".txt").is_file() else ""
+                    minute_reads.extend(re.findall(r"\d{2,6}", minute_text))
+                if minute_reads:
+                    minute_number = max(set(minute_reads), key=minute_reads.count)
+                    if minute_reads.count(minute_number) >= 2:
+                        best["rawText"] += f"\nMINUTE_HEADER {minute_number}"
+                        ocr_log(f"Minuta de encabezado detectada por consenso: {minute_number}")
             ocr_log(f"Resultado recibido: variante {best['variant']}, PSM {best['psm']}, confianza {best['averageConfidence']:.1f}")
             results.append({"pageNumber": index, "rawText": best["rawText"], "normalizedText": " ".join(best["rawText"].split()), "words": best["words"], "averageConfidence": best["averageConfidence"], "engine": "tesseract", "language": "spa", "width": page.rect.width, "height": page.rect.height, "requiresReview": len(best["rawText"].strip()) < 30 or best["averageConfidence"] < 45, "variant": best["variant"], "psm": best["psm"]})
     return {"pageCount": len(results), "pages": results}
