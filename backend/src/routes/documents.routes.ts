@@ -1,6 +1,6 @@
 import {Router} from 'express';
 import type {NextFunction,Request,Response} from 'express';
-import {cancelProcessingJob,confirmDocument,continueQuality,deleteDocument,getDocument,getProcessingJob,listDocuments,restoreDocument,streamDocument,updateQuality,uploadDocument} from '../controllers/documents.controller.js';
+import {cancelProcessingJob,confirmDocument,continueQuality,deleteDocument,getDocument,getProcessingJob,getProcessingResults,listDocuments,restoreDocument,streamDocument,updateQuality,uploadDocument} from '../controllers/documents.controller.js';
 import {authenticate} from '../middlewares/auth.middleware.js';
 import {asyncHandler} from '../utils/http.js';
 
@@ -9,7 +9,9 @@ documentsRouter.use(authenticate);
 documentsRouter.get('/',asyncHandler(listDocuments));
 documentsRouter.post('/',expressRaw,asyncHandler(uploadDocument));
 documentsRouter.post('/upload',expressRaw,asyncHandler(uploadDocument));
+documentsRouter.post('/uploads/from-scan',expressRaw,asyncHandler(uploadDocument));
 documentsRouter.get('/:uploadId/job',asyncHandler(getProcessingJob));
+documentsRouter.get('/document-processing-jobs/:jobId/results',asyncHandler(getProcessingResults));
 documentsRouter.patch('/:uploadId/quality',asyncHandler(updateQuality));
 documentsRouter.post('/:uploadId/quality/continue',asyncHandler(continueQuality));
 documentsRouter.post('/:uploadId/ocr/start',asyncHandler(async(req,res)=>{const jobId=String(req.params.uploadId);const job=await getProcessingJobForStart(req,jobId);const {enqueueOcrJob}=await import('../services/ocr-worker.service.js');res.json(await enqueueOcrJob(job.id))}));

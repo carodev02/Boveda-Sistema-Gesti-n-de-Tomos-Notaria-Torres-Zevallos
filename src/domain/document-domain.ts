@@ -255,6 +255,8 @@ export interface ScanConfiguration{
   registryTypeId:string;
   tomeNumber:string;
   folioQuantity:string;
+  folioRangeStart?:number;
+  folioRangeEnd?:number;
   period:string;
 }
 

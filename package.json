@@ -1,1 +1,46 @@
-{"type":"module","scripts":{"dev":"vite","build":"tsc -b && vite build","lint":"eslint .","tauri":"tauri","tauri:dev":"tauri dev","tauri:build":"tauri build","backend:dev":"npm --prefix backend run dev","backend:build":"npm --prefix backend run build","backend:test":"npm --prefix backend test"},"dependencies":{"@tauri-apps/api":"^2.11.1","@tauri-apps/plugin-dialog":"^2.7.1","@tauri-apps/plugin-store":"^2.4.3","@tesseract.js-data/spa":"^1.0.0","@vitejs/plugin-react":"latest","exceljs":"^4.4.0","lucide-react":"latest","pdf-lib":"^1.17.1","pdfjs-dist":"^6.1.200","react":"latest","react-dom":"latest","react-router-dom":"latest","tesseract.js":"^7.0.0","typescript":"latest","vite":"latest"},"devDependencies":{"@eslint/js":"latest","@tauri-apps/cli":"^2.11.4","@types/react":"latest","@types/react-dom":"latest","eslint":"latest","eslint-plugin-react-hooks":"latest","eslint-plugin-react-refresh":"latest","globals":"latest","typescript-eslint":"latest"},"overrides":{"uuid":"^11.1.1"},"packageManager":"npm@11.4.2"}
+{
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc -b && vite build",
+        "lint": "eslint .",
+        "tauri": "tauri",
+        "tauri:dev": "tauri dev",
+        "tauri:build": "tauri build",
+        "backend:dev": "npm --prefix backend run dev",
+        "backend:build": "npm --prefix backend run build",
+        "backend:test": "npm --prefix backend test"
+    },
+    "dependencies": {
+        "@tauri-apps/api": "^2.11.1",
+        "@tauri-apps/plugin-dialog": "^2.7.1",
+        "@tauri-apps/plugin-store": "^2.4.3",
+        "@tesseract.js-data/spa": "^1.0.0",
+        "@vitejs/plugin-react": "latest",
+        "exceljs": "^4.4.0",
+        "lucide-react": "latest",
+        "pdf-lib": "^1.17.1",
+        "pdfjs-dist": "^6.1.200",
+        "react": "latest",
+        "react-dom": "latest",
+        "react-router-dom": "latest",
+        "tesseract.js": "^7.0.0",
+        "typescript": "latest",
+        "vite": "latest"
+    },
+    "devDependencies": {
+        "@eslint/js": "latest",
+        "@tauri-apps/cli": "^2.11.4",
+        "@types/react": "latest",
+        "@types/react-dom": "latest",
+        "eslint": "latest",
+        "eslint-plugin-react-hooks": "latest",
+        "eslint-plugin-react-refresh": "latest",
+        "globals": "latest",
+        "typescript-eslint": "latest"
+    },
+    "overrides": {
+        "uuid": "^11.1.1"
+    },
+    "packageManager": "npm@11.4.2"
+}

@@ -7,7 +7,7 @@ import {env} from '../config/env.js';
 const root=path.resolve(env.STORAGE_ROOT);
 const worker=path.resolve(process.cwd(),'..','src-tauri','vision','processor.py');
 export async function enqueueOcrJob(jobId:string){
-  const job=await prisma.documentProcessingJob.findUnique({where:{id:jobId}});if(!job)throw new Error('Trabajo documental inexistente.');
+  const job=await prisma.documentProcessingJob.findUnique({where:{id:jobId}});if(!job)throw new Error('Trabajo documental inexistente.');if(['OCR_PROCESSING','REVIEW_REQUIRED','COMPLETED'].includes(job.status))return {jobId,status:job.status};
   await prisma.documentProcessingJob.update({where:{id:jobId},data:{status:'OCR_PROCESSING'}});
   void runOcr(jobId,path.resolve(root,job.temporaryPath));
   return {jobId,status:'OCR_PROCESSING'};

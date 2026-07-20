@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "nodemon --watch src --watch prisma --ext ts,json --exec tsx src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
     "lint": "eslint src tests prisma --ext .ts",
@@ -35,6 +35,7 @@
     "@types/node": "^24.10.1",
     "@types/supertest": "^6.0.3",
     "eslint": "^9.39.1",
+    "nodemon": "^3.1.14",
     "prisma": "^6.19.0",
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",
