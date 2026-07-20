@@ -129,15 +129,37 @@ model Document {
   deletedBy         String?      @db.Uuid
   deletionReason    String?
   createdBy         String       @db.Uuid
+  kardexCaseId      String?      @db.Uuid
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   createdByUser     User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   contractors       DocumentContractor[]
   processingJob     DocumentProcessingJob?
+  kardexCase        KardexCase?  @relation(fields: [kardexCaseId], references: [id], onDelete: SetNull)
 
   @@index([documentType, year, biennium, tomo])
   @@index([deletedAt])
   @@index([createdAt])
+  @@index([kardexCaseId])
+}
+
+model KardexCase {
+  id                String     @id @default(uuid()) @db.Uuid
+  normalizedKardex  String
+  periodKey         String
+  year              Int?
+  bienniumStart     Int?
+  bienniumEnd       Int?
+  tomeNumber        String
+  legalAct          String?
+  primaryContractor String?
+  status            String
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  documents         Document[]
+
+  @@unique([normalizedKardex, periodKey, tomeNumber])
+  @@index([normalizedKardex])
 }
 
 enum ProcessingJobStatus {
