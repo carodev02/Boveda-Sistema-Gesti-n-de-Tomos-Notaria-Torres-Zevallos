@@ -3,7 +3,7 @@ use notify::{EventKind,RecommendedWatcher,RecursiveMode,Watcher};
 use serde::{Deserialize,Serialize};
 use sha2::{Digest,Sha256};
 use std::{collections::{HashMap,HashSet},fs,path::{Path,PathBuf},process::Command,sync::{Arc,Mutex},thread,time::{Duration,SystemTime}};
-use tauri::{AppHandle,Emitter,Manager,State};
+use tauri::{AppHandle,Emitter,Manager,State,UserAttentionType};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
@@ -120,6 +120,7 @@ fn start_scan_session(app:AppHandle,state:State<DesktopState>,mut session:ScanSe
   let mut watcher=notify::recommended_watcher(move|event:Result<notify::Event,notify::Error>|{
     if let Ok(event)=event{
       if !matches!(event.kind,EventKind::Create(_)|EventKind::Modify(_)){return}
+      eprintln!("[CZUR] Evento de archivo recibido");
       for path in event.paths{
         if !allowed_scan_file(&path)||baseline.contains(&path){continue}
         let is_new=fs::metadata(&path).and_then(|metadata|metadata.modified()).ok().map(DateTime::<Utc>::from).is_some_and(|modified|modified>started_at);
@@ -128,13 +129,15 @@ fn start_scan_session(app:AppHandle,state:State<DesktopState>,mut session:ScanSe
         if !reserved{continue}
         let app=emitted_app.clone();let processed=processed.clone();let detected=detected.clone();let hashes=hashes.clone();let template=template.clone();
         thread::spawn(move||{
+          eprintln!("[CZUR] PDF candidato detectado");eprintln!("[CZUR] Esperando estabilidad");
           if let Ok((size,pages))=stable_pdf(&path){
+            eprintln!("[CZUR] PDF estable");
             let Ok(hash)=sha256_file(&path)else{if let Ok(mut set)=processed.lock(){set.remove(&path);}return};
-            let child_id=Uuid::new_v4().to_string();
+            let child_id=template.id.clone();
             let modified=fs::metadata(&path).and_then(|metadata|metadata.modified()).ok().map(DateTime::<Utc>::from).unwrap_or_else(Utc::now).to_rfc3339();
-            let mut item=ScanInboxItem{id:Uuid::new_v4().to_string(),session_id:child_id.clone(),source_filename:path.file_name().unwrap_or_default().to_string_lossy().to_string(),source_size:size,source_modified_at:modified,sha256:hash.clone(),detected_at:Utc::now().to_rfc3339(),status:"DETECTED".into(),retry_count:0,page_count:pages,error:None,delete_source:true};
+            let mut item=ScanInboxItem{id:Uuid::new_v4().to_string(),session_id:child_id.clone(),source_filename:path.file_name().unwrap_or_default().to_string_lossy().to_string(),source_size:size,source_modified_at:modified,sha256:hash.clone(),detected_at:Utc::now().to_rfc3339(),status:"DETECTED".into(),retry_count:0,page_count:pages,error:None,delete_source:false};
             let duplicate=hashes.lock().is_ok_and(|mut values|!values.insert(hash));
-            if duplicate{item.status="DUPLICATE".into();let _=save_inbox(&app,&item);let _=fs::remove_file(&path);if let Ok(mut set)=processed.lock(){set.remove(&path);}return}
+            if duplicate{item.status="DUPLICATE".into();let _=save_inbox(&app,&item);if let Ok(mut set)=processed.lock(){set.remove(&path);}return}
             let mut child=template;child.id=child_id.clone();child.started_at=Utc::now().to_rfc3339();child.status="FILE_DETECTED".into();child.pages.clear();child.page_count=0;child.original_file_name=Some(item.source_filename.clone());
             let queue=ScanProcessingQueueItem{session_id:child_id.clone(),inbox_item_id:item.id.clone(),priority:100,status:"PENDING".into(),created_at:Utc::now().to_rfc3339(),started_at:None,completed_at:None,error:None};
             if save_session(&app,&child).is_err()||save_inbox(&app,&item).is_err()||save_queue_item(&app,&queue).is_err(){if let Ok(mut set)=processed.lock(){set.remove(&path);}return}
@@ -151,10 +154,12 @@ fn start_scan_session(app:AppHandle,state:State<DesktopState>,mut session:ScanSe
   }).map_err(|error|error.to_string())?;
   watcher.watch(&folder,RecursiveMode::Recursive).map_err(|error|error.to_string())?;
   *state.watcher.lock().map_err(|_|"No se pudo iniciar la vigilancia.")?=Some(watcher);
+  eprintln!("[CZUR] Watcher iniciado");eprintln!("[CZUR] Carpeta válida");eprintln!("[CZUR] Esperando archivos posteriores a startedAt");
   Ok(session)
 }
 #[tauri::command]
 fn select_scan_file(app:AppHandle,state:State<DesktopState>,session_id:String,file_id:String)->Result<ScanSession,String>{
+  eprintln!("[CZUR] Ingesta iniciada");
   let source=state.detected.lock().map_err(|_|"No se pudo resolver el archivo detectado.")?.remove(&file_id).ok_or("El archivo detectado ya no está disponible.")?;
   let mut item=read_inbox(&app,&session_id)?;
   let mut queue_item=ScanProcessingQueueItem{session_id:session_id.clone(),inbox_item_id:item.id.clone(),priority:100,status:"PENDING".into(),created_at:item.detected_at.clone(),started_at:None,completed_at:None,error:None};
@@ -177,8 +182,8 @@ fn select_scan_file(app:AppHandle,state:State<DesktopState>,session_id:String,fi
     let result=run_processor(&app,&copied,&base)?;
     session.detected_file_path=None;session.temporary_copy_path=Some(copied.to_string_lossy().to_string());session.original_file_name=Some(item.source_filename.clone());session.page_count=result.get("pageCount").and_then(serde_json::Value::as_u64).unwrap_or(0) as u32;session.pages=serde_json::from_value(result.get("pages").cloned().unwrap_or_default()).map_err(|error|format!("PDF_RENDER_FAILED: {error}"))?;session.status="READY_FOR_REVIEW".into();session.error=None;save_session(&app,&session)?;
     item.status="READY_FOR_REVIEW".into();item.page_count=session.page_count;queue_item.status="READY_FOR_REVIEW".into();queue_item.completed_at=Some(Utc::now().to_rfc3339());save_inbox(&app,&item)?;save_queue_item(&app,&queue_item)?;
-    let ready=ScanStatusEvent{session_id:session_id.clone(),status:"READY_FOR_REVIEW".into(),message:"Documento listo para revisar.".into(),file:None};let _=app.emit("scan-session-status",ready.clone());let _=app.emit("SCAN_READY_FOR_REVIEW",ready);
-    if let Some(window)=app.get_webview_window("main"){let _=window.unminimize();let _=window.show();let _=window.set_focus();}
+    eprintln!("[CZUR] Preparación completada");let ready=ScanStatusEvent{session_id:session_id.clone(),status:"READY_FOR_REVIEW".into(),message:"Documento listo para revisar.".into(),file:None};let _=app.emit("scan-session-status",ready.clone());let _=app.emit("SCAN_READY_FOR_PREVIEW",ready);eprintln!("[CZUR] Evento emitido");
+    if let Some(window)=app.get_webview_window("main"){let _=window.show();let _=window.unminimize();let _=window.request_user_attention(Some(UserAttentionType::Informational));let _=window.set_focus();}
     Ok(session)
   })();
   if let Err(error)=&outcome{item.status="FAILED".into();item.retry_count+=1;item.error=Some(error.clone());queue_item.status="FAILED".into();queue_item.error=Some(error.clone());queue_item.completed_at=Some(Utc::now().to_rfc3339());let _=save_inbox(&app,&item);let _=save_queue_item(&app,&queue_item);if let Ok(mut paths)=state.processed.lock(){paths.remove(&source);}if let Ok(mut hashes)=state.hashes.lock(){hashes.remove(&item.sha256);}}
