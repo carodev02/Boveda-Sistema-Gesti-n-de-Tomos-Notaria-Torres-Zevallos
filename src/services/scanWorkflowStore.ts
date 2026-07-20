@@ -16,6 +16,7 @@ export const scanWorkflowStore={
  finishAcquisition:(status:'COMPLETED'|'CANCELLED'|'FAILED')=>{state={...state,acquisitionMode:'IDLE',acquisitionStatus:status,acquisitionSessionId:undefined};emit()},
  setConfiguration:(configuration:ScanConfiguration)=>{state={...state,configuration};emit()},
  setSession:(session:ScanSession)=>{state={...state,sessionId:session.id,sessionStatus:session.status,originalFilename:session.originalFileName,pageCount:session.pageCount,pages:session.pages,selectedPageId:session.pages[0]?.id,cleanPdfReady:Boolean(session.cleanPdfPath),processingError:session.error??undefined};emit()},
+ setCleanPdfReady:(ready:boolean)=>{state={...state,cleanPdfReady:ready};emit()},
  setPages:(pages:ScanPage[])=>{state={...state,pages,pageCount:pages.length,selectedPageId:state.selectedPageId??pages[0]?.id};emit()},
  updatePage:(page:ScanPage)=>{state={...state,pages:state.pages.map(item=>item.id===page.id?page:item)};emit()},
  selectPage:(id:string)=>{state={...state,selectedPageId:id};emit()},
@@ -31,7 +32,7 @@ export const scanWorkflowStore={
  clearOcrJob:()=>{state={...state,ocrJobId:undefined,ocrStatus:undefined,currentStage:'PREPARING',processedPages:undefined,progress:undefined,processingErrorCode:undefined,ocrError:undefined};emit()},
  setOcrResults:(result:{pages:unknown[];fields:unknown[];confirmedFields?:unknown[];reviewFields?:unknown[];reviewCount:number;documentLocation?:Record<string,unknown>;location?:Record<string,unknown>;documentClass?:string},status='REVIEW_REQUIRED')=>{const fields=result.fields.length?result.fields:[...(result.confirmedFields??[]),...(result.reviewFields??[])];state={...state,ocrPages:result.pages,extractedFields:fields,confirmedFields:result.confirmedFields??[],reviewFields:result.reviewFields??[],reviewCount:result.reviewCount,documentLocation:result.documentLocation??result.location,documentClass:result.documentClass,ocrStatus:status,currentStage:status};emit()},
  setUploadError:(uploadError?:string)=>{state={...state,uploadError};emit()},
- resetProcessingState:()=>{state={...state,uploadId:undefined,documentId:undefined,ocrJobId:undefined,uploadStatus:undefined,ocrStatus:undefined,currentStage:undefined,processedPages:undefined,totalPages:undefined,progress:undefined,processingErrorCode:undefined,uploadError:undefined,ocrError:undefined};emit()},
+ resetProcessingState:()=>{state={...state,uploadId:undefined,documentId:undefined,ocrJobId:undefined,uploadStatus:undefined,ocrStatus:undefined,currentStage:undefined,processedPages:undefined,totalPages:undefined,progress:undefined,processingErrorCode:undefined,uploadError:undefined,ocrError:undefined,ocrPages:undefined,extractedFields:undefined,confirmedFields:undefined,reviewFields:undefined,reviewCount:undefined,documentLocation:undefined,documentClass:undefined,cleanPdfReady:false};emit()},
  resetWorkflow:()=>{state={...initial,acquisitionMode:state.acquisitionMode,acquisitionStatus:state.acquisitionStatus,acquisitionSessionId:state.acquisitionSessionId};emit()},
  recoverSession:(session:ScanSession)=>scanWorkflowStore.setSession(session),
 };

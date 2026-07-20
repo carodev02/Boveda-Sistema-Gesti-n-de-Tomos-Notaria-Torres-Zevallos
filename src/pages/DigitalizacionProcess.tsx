@@ -21,7 +21,7 @@ import type {
   ScanSession,
 } from "../domain/document-domain";
 import { generateNormalizedFilename,normalizePdfFilename } from "../utils/documentFilename";
-import { uploadCleanPdfFromSession } from "../services/documentUploadService";
+import {processAcquiredDocument} from "../services/acquiredDocumentProcessing";
 import { mapOcrFieldsToReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
 import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
@@ -124,6 +124,7 @@ export function DigitalizacionProcess() {
   );
   useEffect(()=>{void import("../data/repository").then(({getDocuments})=>getDocuments().then(rows=>setExistingFileNames(rows.map(row=>row.fileName))).catch(()=>undefined))},[]);
   useEffect(()=>{setProposedFileName(normalizedName)},[normalizedName]);
+  useEffect(()=>{if(phase==='review')processTrace(`[REVIEW] campos mostrados: ${(scanWorkflowStore.get().extractedFields??[]).length}`)},[phase]);
   useEffect(()=>{
     const fields=workflow.extractedFields as OcrField[]|undefined;
     if(!fields?.length)return;
@@ -151,28 +152,13 @@ export function DigitalizacionProcess() {
     void (async () => {
       try {
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADING", currentStage: "PREPARING" });
-        const upload = initial.uploadId
-          ? { uploadId: initial.uploadId, documentId: initial.documentId, status: initial.uploadStatus ?? "COMPLETED" }
-          : await uploadCleanPdfFromSession({ sessionId: initial.sessionId, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber, folioRangeStart: folioRange?.start, folioRangeEnd: folioRange?.end, year: /^\d{4}$/.test(config.period) ? Number(config.period) : undefined, bienniumStart: config.period.includes('-') ? Number(config.period.slice(0,4)) : undefined, bienniumEnd: config.period.includes('-') ? Number(config.period.slice(5)) : undefined, file });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        const acquired = await processAcquiredDocument({sessionId:initial.sessionId,sourceType:initial.sessionId?'CZUR':'MANUAL',state:initial,signal:controller.signal,metadata:{documentClass:config.documentClass,registryTypeId:config.registryTypeId,tomeNumber:config.tomeNumber,folioRangeStart:folioRange?.start,folioRangeEnd:folioRange?.end,year:/^\d{4}$/.test(config.period)?Number(config.period):undefined,bienniumStart:config.period.includes('-')?Number(config.period.slice(0,4)):undefined,bienniumEnd:config.period.includes('-')?Number(config.period.slice(5)):undefined,file}}).finally(()=>clearTimeout(timer));
+        const {upload,job}=acquired;
         if (!initial.uploadId) scanWorkflowStore.setUploadResult({ ...upload, status: "COMPLETED" });
         processTrace(`Upload completado: ${shortId(upload.uploadId)}`);
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADED", currentStage: "READING_PAGES", totalPages: "pageCount" in upload ? upload.pageCount : initial.totalPages });
-        let job: { jobId: string; status: string };
-        try {
-          processTrace("Iniciando OCR");
-          if (initial.ocrJobId) job = { jobId: initial.ocrJobId, status: initial.ocrStatus ?? "OCR_PENDING" };
-          else {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 15000);
-            try { job = await ocrProcessingService.start(upload.uploadId, controller.signal); } finally { clearTimeout(timer); }
-          }
-        } catch (error) {
-          const code = error instanceof ApiError && error.status >= 500 || error instanceof DOMException && error.name === "AbortError" ? "BACKEND_UNAVAILABLE" : "OCR_START_FAILED";
-          const detail = error instanceof Error ? error.message : undefined;
-          processTrace(`Error ${code}: ${detail ?? "sin detalle"}`);
-          scanWorkflowStore.setProcessingFailure(code, detail);
-          return;
-        }
         if (!initial.ocrJobId) scanWorkflowStore.setOcrJob(job.jobId, job.status);
         processTrace(`Job creado: ${shortId(job.jobId)}`);
         scanWorkflowStore.setProcessingProgress({ status: job.status, currentStage: "RUNNING_OCR", totalPages: "pageCount" in upload ? upload.pageCount : initial.totalPages });
@@ -185,8 +171,11 @@ export function DigitalizacionProcess() {
             scanWorkflowStore.setProcessingProgress(current);
             if (["COMPLETED", "REVIEW_REQUIRED"].includes(current.status)) {
               const results = await ocrProcessingService.results(job.jobId);
+              processTrace(`Páginas procesadas: ${results.pages.length}`);
+              processTrace(`Campos extraídos: ${results.fields.length}`);
               resultsLoadedRef.current = true;
               scanWorkflowStore.setOcrResults(results, current.status);
+              processTrace('Resultados cargados');
               pollingActiveRef.current = false;
               if (!reviewTransitionDoneRef.current) {
                 reviewTransitionDoneRef.current = true;
@@ -212,7 +201,8 @@ export function DigitalizacionProcess() {
       } catch (error) {
         pollingActiveRef.current = false;
         const readFailure = error instanceof Error && error.message === "No se pudo leer el PDF preparado.";
-        const code = readFailure ? "READ_CLEAN_FAILED" : error instanceof ApiError && error.status >= 500 || error instanceof DOMException && error.name === "AbortError" ? "BACKEND_UNAVAILABLE" : "UPLOAD_FAILED";
+        const ocrStartFailure=error instanceof Error&&error.message.startsWith('OCR_START_FAILED:');
+        const code = readFailure ? "READ_CLEAN_FAILED" : ocrStartFailure?'OCR_START_FAILED':error instanceof ApiError && error.status >= 500 || error instanceof DOMException && error.name === "AbortError" ? "BACKEND_UNAVAILABLE" : "UPLOAD_FAILED";
         const detail = readFailure ? "No se pudo leer el PDF preparado." : error instanceof Error ? error.message : undefined;
         processTrace(`Error ${code}: ${detail ?? "sin detalle"}`);
         scanWorkflowStore.setUploadError(detail);
@@ -228,7 +218,7 @@ export function DigitalizacionProcess() {
     processingStartedRef.current = false;
     resultsLoadedRef.current = false;
     reviewTransitionDoneRef.current = false;
-    scanWorkflowStore.resetWorkflow();
+    scanWorkflowStore.resetProcessingState();
     setFile(undefined);
     setPages(0);
     setReview(emptyReview);
@@ -287,6 +277,8 @@ export function DigitalizacionProcess() {
     }
   }
   function acceptCleanPdf(clean: File) {
+    scanWorkflowStore.resetProcessingState();
+    scanWorkflowStore.setCleanPdfReady(true);
     setFile(clean);
     setProcessingStatus("PROCESSING");
     setMessage("");
@@ -472,6 +464,7 @@ export function DigitalizacionProcess() {
               saving={saving}
               message={message}
               reviewTargets={reviewTargetsFromOcrFields((workflow.reviewFields ?? []) as OcrField[])}
+              ocrFields={(workflow.extractedFields??[]) as OcrField[]}
               onBack={() => setPhase("preview")}
               onConfirm={confirmDocument}
             />
@@ -681,6 +674,7 @@ function Review({
   saving,
   message,
   reviewTargets,
+  ocrFields,
   onBack,
   onConfirm,
 }: {
@@ -694,6 +688,7 @@ function Review({
   saving: boolean;
   message: string;
   reviewTargets:Set<keyof ReviewValues>;
+  ocrFields:OcrField[];
   onBack: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
@@ -738,6 +733,7 @@ function Review({
           <MinuteFields values={values} update={update} reviewTargets={reviewTargets} />
         )}
       </div>
+      {ocrFields.length>0&&<div className="locationCard"><b>Resultados del análisis</b><dl>{ocrFields.filter(field=>field.normalizedValue||field.extractedValue).map(field=><div key={`${field.fieldName}-${field.pageNumber??0}`}><dt>{field.fieldName}{field.requiresReview?' · Requiere revisión':''}</dt><dd>{field.normalizedValue||field.extractedValue}</dd><small>Confianza {Math.round((field.confidence??0)*100)}%{field.pageNumber?` · Página ${field.pageNumber}`:''}{field.sourceText?` · Evidencia: ${field.sourceText}`:''}</small></div>)}</dl></div>}
       <div className="normalizedNamePreview">
         <b>Nombre propuesto del archivo</b>
         <input className="field" aria-label="Nombre propuesto del archivo" value={proposedFileName} onChange={event=>setProposedFileName(event.target.value)}/>

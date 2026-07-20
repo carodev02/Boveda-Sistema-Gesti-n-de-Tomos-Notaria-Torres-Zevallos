@@ -156,11 +156,15 @@ def recognize(source: Path, session: Path) -> dict:
                 pixmap = page.get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
                 pixmap.save(image)
             except Exception as error:
-                raise OcrFailure("PAGE_RENDER_FAILED", f"No se pudo renderizar la página {index}: {error}") from error
+                ocr_log(f"Página {index} requiere revisión: no se pudo renderizar")
+                results.append({"pageNumber": index, "rawText": "", "normalizedText": "", "words": [], "averageConfidence": 0, "engine": "tesseract", "language": "spa", "requiresReview": True, "errorCode": "PAGE_RENDER_FAILED"})
+                continue
             ocr_log("Imagen renderizada")
             rendered = cv2.imread(str(image), cv2.IMREAD_COLOR)
             if rendered is None:
-                raise OcrFailure("IMAGE_PREPROCESSING_FAILED", f"No se pudo leer la imagen de la página {index}.")
+                ocr_log(f"Página {index} requiere revisión: imagen no disponible")
+                results.append({"pageNumber": index, "rawText": "", "normalizedText": "", "words": [], "averageConfidence": 0, "engine": "tesseract", "language": "spa", "requiresReview": True, "errorCode": "IMAGE_PREPROCESSING_FAILED"})
+                continue
             gray = cv2.cvtColor(rendered, cv2.COLOR_BGR2GRAY)
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
             adaptive = cv2.adaptiveThreshold(clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15)
@@ -177,10 +181,11 @@ def recognize(source: Path, session: Path) -> dict:
                     ocr_log(f"Tesseract iniciado: {variant_name}, PSM {psm}")
                     completed = subprocess.run([executable, str(variant_path), str(base), "-l", "spa", "--psm", str(psm), "-c", "tessedit_create_tsv=1"], env=environment, capture_output=True, text=True)
                     if completed.returncode != 0:
-                        raise OcrFailure("OCR_ENGINE_FAILED", completed.stderr.strip() or "Tesseract terminó con error.")
+                        ocr_log(f"Variante fallida en página {index}: {variant_name}, PSM {psm}")
+                        continue
                     tsv = base.with_suffix(".tsv")
                     if not tsv.is_file():
-                        raise OcrFailure("OCR_ENGINE_FAILED", "Tesseract no generó el resultado TSV.")
+                        continue
                     words = []
                     for line in tsv.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
                         columns = line.split("\t")
@@ -194,6 +199,9 @@ def recognize(source: Path, session: Path) -> dict:
                     confidence = sum(word["confidence"] for word in words) / len(words) if words else 0
                     labels = sum(label in raw_text.lower() for label in ("kardex", "minuta", "escritura", "notario", "foja"))
                     candidates.append({"rawText": raw_text, "words": words, "averageConfidence": confidence, "score": len(raw_text) + confidence * 2 + labels * 50, "variant": variant_name, "psm": psm})
+            if not candidates:
+                results.append({"pageNumber": index, "rawText": "", "normalizedText": "", "words": [], "averageConfidence": 0, "engine": "tesseract", "language": "spa", "requiresReview": True, "errorCode": "OCR_PAGE_EMPTY"})
+                continue
             best = max(candidates, key=lambda item: item["score"])
             # El Kardex impreso suele estar aislado en el encabezado. Una lectura global
             # con alta confianza puede omitirlo aunque lea bien el cuerpo mecanografiado.
@@ -231,6 +239,8 @@ def recognize(source: Path, session: Path) -> dict:
                         ocr_log(f"Minuta de encabezado detectada por consenso: {minute_number}")
             ocr_log(f"Resultado recibido: variante {best['variant']}, PSM {best['psm']}, confianza {best['averageConfidence']:.1f}")
             results.append({"pageNumber": index, "rawText": best["rawText"], "normalizedText": " ".join(best["rawText"].split()), "words": best["words"], "averageConfidence": best["averageConfidence"], "engine": "tesseract", "language": "spa", "width": page.rect.width, "height": page.rect.height, "requiresReview": len(best["rawText"].strip()) < 30 or best["averageConfidence"] < 45, "variant": best["variant"], "psm": best["psm"]})
+    if not any(item.get("rawText", "").strip() for item in results):
+        raise OcrFailure("OCR_RESULT_EMPTY", "Ninguna página produjo texto OCR utilizable.")
     return {"pageCount": len(results), "pages": results}
 
 

@@ -15,4 +15,12 @@ describe('exclusividad de adquisición',()=>{
     expect(scanWorkflowStore.beginAcquisition('CZUR','session-2')).toBe(false);
     expect(scanWorkflowStore.get().acquisitionSessionId).toBe('session-1');
   });
+  it('limpia resultados anteriores sin borrar la configuración nueva',()=>{
+    scanWorkflowStore.setConfiguration({documentClass:'MINUTA',registryTypeId:'',tomeNumber:'80',folioQuantity:'22-24',period:'2026'});
+    scanWorkflowStore.setOcrResults({pages:[{}],fields:[{fieldName:'kardexNumber'}],reviewCount:1});
+    scanWorkflowStore.resetProcessingState();
+    expect(scanWorkflowStore.get().configuration?.tomeNumber).toBe('80');
+    expect(scanWorkflowStore.get().extractedFields).toBeUndefined();
+    expect(scanWorkflowStore.get().cleanPdfReady).toBe(false);
+  });
 });
