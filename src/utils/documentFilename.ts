@@ -31,10 +31,10 @@ export function normalizePdfFilename(value:string,existingNames?:Iterable<string
 export function generateNormalizedFilename(input:NormalizedFilenameInput){
   const kardex=cleanPart(input.kardexNumber??'');
   if(!kardex)return normalizePdfFilename('DOCUMENTO - REVISAR',input.existingNames);
+  if(input.documentClass==='MINUTA')return normalizePdfFilename(`K-${kardex}`,input.existingNames);
   const contractor=cleanPart(input.contractor??'');
   const instrument=cleanPart(input.instrumentNumber??'');
   const parts=[contractor,`KARDEX ${kardex}`];
-  if(input.documentClass==='MINUTA')parts.push('MINUTA');
   if(input.documentClass==='REGISTRO_NOTARIAL'&&instrument)parts.push(`ESCRITURA ${instrument}`);
   return normalizePdfFilename(parts.filter(Boolean).join(' - '),input.existingNames);
 }

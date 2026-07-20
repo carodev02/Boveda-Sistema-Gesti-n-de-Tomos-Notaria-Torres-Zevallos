@@ -22,7 +22,7 @@ import type {
 } from "../domain/document-domain";
 import { generateNormalizedFilename,normalizePdfFilename } from "../utils/documentFilename";
 import {processAcquiredDocument} from "../services/acquiredDocumentProcessing";
-import { mapOcrFieldsToReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
+import { findOcrField,mapOcrFieldsToReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
 import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
 import { ApiError } from "../services/apiClient";
@@ -463,7 +463,7 @@ export function DigitalizacionProcess() {
               pages={pages}
               saving={saving}
               message={message}
-              reviewTargets={reviewTargetsFromOcrFields((workflow.reviewFields ?? []) as OcrField[])}
+              reviewTargets={reviewTargetsFromOcrFields((workflow.extractedFields ?? []) as OcrField[])}
               ocrFields={(workflow.extractedFields??[]) as OcrField[]}
               onBack={() => setPhase("preview")}
               onConfirm={confirmDocument}
@@ -728,12 +728,11 @@ function Review({
       </div>
       <div className="reviewGrid domainReviewGrid">
         {config.documentClass === "REGISTRO_NOTARIAL" ? (
-          <RegistryFields values={values} update={update} reviewTargets={reviewTargets} />
+          <RegistryFields values={values} update={update} reviewTargets={reviewTargets} ocrFields={ocrFields}/>
         ) : (
-          <MinuteFields values={values} update={update} reviewTargets={reviewTargets} />
+          <MinuteFields values={values} update={update} reviewTargets={reviewTargets} ocrFields={ocrFields}/>
         )}
       </div>
-      {ocrFields.length>0&&<div className="locationCard"><b>Resultados del análisis</b><dl>{ocrFields.filter(field=>field.normalizedValue||field.extractedValue).map(field=><div key={`${field.fieldName}-${field.pageNumber??0}`}><dt>{field.fieldName}{field.requiresReview?' · Requiere revisión':''}</dt><dd>{field.normalizedValue||field.extractedValue}</dd><small>Confianza {Math.round((field.confidence??0)*100)}%{field.pageNumber?` · Página ${field.pageNumber}`:''}{field.sourceText?` · Evidencia: ${field.sourceText}`:''}</small></div>)}</dl></div>}
       <div className="normalizedNamePreview">
         <b>Nombre propuesto del archivo</b>
         <input className="field" aria-label="Nombre propuesto del archivo" value={proposedFileName} onChange={event=>setProposedFileName(event.target.value)}/>
@@ -755,10 +754,12 @@ function RegistryFields({
   values,
   update,
   reviewTargets,
+  ocrFields,
 }: {
   values: ReviewValues;
   update: (key: keyof ReviewValues, value: string) => void;
   reviewTargets:Set<keyof ReviewValues>;
+  ocrFields:OcrField[];
 }) {
   return (
     <>
@@ -767,24 +768,28 @@ function RegistryFields({
         type="number"
         value={values.printedFolio}
         requiresReview={reviewTargets.has("printedFolio")}
+        evidence={findOcrField(ocrFields,"printedFolio")}
         onChange={(value) => update("printedFolio", value)}
       />
       <Field
         label="Número de minuta *"
         value={values.minuteNumber}
         requiresReview={reviewTargets.has("minuteNumber")}
+        evidence={findOcrField(ocrFields,"minuteNumber")}
         onChange={(value) => update("minuteNumber", value)}
       />
       <Field
         label="Número de kardex *"
         value={values.kardexNumber}
         requiresReview={reviewTargets.has("kardexNumber")}
+        evidence={findOcrField(ocrFields,"kardexNumber")}
         onChange={(value) => update("kardexNumber", value)}
       />
       <Field
         label="Tipo de instrumento *"
         value={values.instrumentType}
         requiresReview={reviewTargets.has("instrumentType")}
+        evidence={findOcrField(ocrFields,"instrumentType")}
         placeholder="Escritura, Acta, Poder..."
         onChange={(value) => update("instrumentType", value)}
       />
@@ -792,17 +797,20 @@ function RegistryFields({
         label="Número de instrumento *"
         value={values.instrumentNumber}
         requiresReview={reviewTargets.has("instrumentNumber")}
+        evidence={findOcrField(ocrFields,"instrumentNumber")}
         onChange={(value) => update("instrumentNumber", value)}
       />
       <Field
         label="Contratante principal relacionado *"
         value={values.primaryContractor}
         requiresReview={reviewTargets.has("primaryContractor")}
+        evidence={findOcrField(ocrFields,"primaryContractor")}
         onChange={(value) => update("primaryContractor", value)}
       />
       <LegalActField
         value={values.legalActId}
         requiresReview={reviewTargets.has("legalActId")}
+        evidence={findOcrField(ocrFields,"legalActId")}
         onChange={(value) => update("legalActId", value)}
       />
       {values.qrUrl && (
@@ -827,10 +835,12 @@ function MinuteFields({
   values,
   update,
   reviewTargets,
+  ocrFields,
 }: {
   values: ReviewValues;
   update: (key: keyof ReviewValues, value: string) => void;
   reviewTargets:Set<keyof ReviewValues>;
+  ocrFields:OcrField[];
 }) {
   return (
     <>
@@ -838,6 +848,7 @@ function MinuteFields({
         label="Número de kardex *"
         value={values.kardexNumber}
         requiresReview={reviewTargets.has("kardexNumber")}
+        evidence={findOcrField(ocrFields,"kardexNumber")}
         onChange={(value) => update("kardexNumber", value)}
       />
       <label>
@@ -857,17 +868,20 @@ function MinuteFields({
           ))}
         </select>
         {reviewTargets.has("destinationRegistryTypeId")&&<small className="reviewHint">Requiere revisión</small>}
+        <EvidenceAction field={findOcrField(ocrFields,"destinationRegistryTypeId")}/>
       </label>
       <Field
         label="Número del instrumento de destino"
         value={values.destinationInstrumentNumber}
         requiresReview={reviewTargets.has("destinationInstrumentNumber")}
+        evidence={findOcrField(ocrFields,"destinationInstrumentNumber")}
         onChange={(value) => update("destinationInstrumentNumber", value)}
       />
       <Field
         label="Número de minuta *"
         value={values.minuteNumber}
         requiresReview={reviewTargets.has("minuteNumber")}
+        evidence={findOcrField(ocrFields,"minuteNumber")}
         onChange={(value) => update("minuteNumber", value)}
       />
       <Field
@@ -875,6 +889,7 @@ function MinuteFields({
         type="number"
         value={values.printedFolio}
         requiresReview={reviewTargets.has("printedFolio")}
+        evidence={findOcrField(ocrFields,"printedFolio")}
         onChange={(value) => update("printedFolio", value)}
       />
       <Field
@@ -882,17 +897,20 @@ function MinuteFields({
         type="date"
         value={values.documentDate}
         requiresReview={reviewTargets.has("documentDate")}
+        evidence={findOcrField(ocrFields,"documentDate")}
         onChange={(value) => update("documentDate", value)}
       />
       <LegalActField
         value={values.legalActId}
         requiresReview={reviewTargets.has("legalActId")}
+        evidence={findOcrField(ocrFields,"legalActId")}
         onChange={(value) => update("legalActId", value)}
       />
       <Field
         label="Contratante principal *"
         value={values.primaryContractor}
         requiresReview={reviewTargets.has("primaryContractor")}
+        evidence={findOcrField(ocrFields,"primaryContractor")}
         onChange={(value) => update("primaryContractor", value)}
       />
     </>
@@ -905,6 +923,7 @@ function Field({
   type = "text",
   placeholder,
   requiresReview=false,
+  evidence,
 }: {
   label: string;
   value: string;
@@ -912,6 +931,7 @@ function Field({
   type?: string;
   placeholder?: string;
   requiresReview?:boolean;
+  evidence?:OcrField;
 }) {
   return (
     <label>
@@ -924,17 +944,21 @@ function Field({
         onChange={(event) => onChange(event.target.value)}
       />
       {requiresReview&&<small className="reviewHint">Requiere revisión</small>}
+      <EvidenceAction field={evidence}/>
     </label>
   );
 }
+function EvidenceAction({field}:{field?:OcrField}){if(!field?.sourceText)return null;const confidence=(field.confidence??0)<=1?Math.round((field.confidence??0)*100):Math.round(field.confidence??0);return <button type="button" className="manualAction" onClick={()=>window.alert(`Página: ${field.pageNumber??'No indicada'}\nConfianza: ${confidence}%\n\n${field.sourceText}`)}>Ver evidencia</button>}
 function LegalActField({
   value,
   onChange,
   requiresReview=false,
+  evidence,
 }: {
   value: string;
   onChange: (value: string) => void;
   requiresReview?:boolean;
+  evidence?:OcrField;
 }) {
   return (
     <label>
@@ -952,6 +976,7 @@ function LegalActField({
         ))}
       </select>
       {requiresReview&&<small className="reviewHint">Requiere revisión</small>}
+      <EvidenceAction field={evidence}/>
     </label>
   );
 }
