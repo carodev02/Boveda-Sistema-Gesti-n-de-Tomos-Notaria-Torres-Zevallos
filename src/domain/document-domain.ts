@@ -218,6 +218,8 @@ export interface ScanPage{
 }
 export interface ScanSession{
   id:string;
+  sourceType?:'CZUR'|'MANUAL';
+  acquisitionId?:string;
   documentClass:DocumentClass;
   registryTypeId:string;
   tomeNumber:string;

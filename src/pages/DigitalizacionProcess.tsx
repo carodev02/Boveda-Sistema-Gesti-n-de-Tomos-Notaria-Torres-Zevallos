@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, FileArchive, FileText } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -19,10 +19,12 @@ import type {
   ScanConfiguration,
   ScanSession,
 } from "../domain/document-domain";
-import { generateNormalizedFilename } from "../utils/documentFilename";
+import { generateNormalizedFilename,normalizePdfFilename } from "../utils/documentFilename";
 import { uploadCleanPdfFromSession } from "../services/documentUploadService";
 import { ocrProcessingService } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
+import { friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
+import { ApiError } from "../services/apiClient";
 import { czurDesktop } from "../services/czurDesktop";
 import "./digitalizacion.css";
 import "../styles/digitalization-workflow.css";
@@ -41,25 +43,6 @@ const emptyReview: ReviewValues = {
   legalActId: "",
   primaryContractor: "",
   qrUrl: "",
-};
-const processingStages = [
-  "Lectura del documento",
-  "Identificación de campos",
-  "Búsqueda de kardex relacionado",
-  "Preparación del nombre del archivo",
-  "Validación",
-];
-const PROCESS_STATUS_LABELS: Record<ProcessingStatus, string> = {
-  COMPLETED: "PDF preparado",
-  PENDING: "Pendiente",
-  PROCESSING: "En proceso",
-  FAILED: "Error",
-};
-const PROCESS_STAGE_LABELS: Record<ProcessingStatus, string> = {
-  COMPLETED: "Completado",
-  PENDING: "Pendiente",
-  PROCESSING: "En proceso",
-  FAILED: "Error",
 };
 function parseFolioRange(value: string) {
   const match = value.trim().match(/^(\d+)\s*(?:-|–|al)\s*(\d+)$/i);
@@ -86,8 +69,11 @@ export function DigitalizacionProcess() {
   const [processingStatus, setProcessingStatus] =
     useState<ProcessingStatus>("PENDING");
   const [review, setReview] = useState<ReviewValues>(emptyReview);
+  const [proposedFileName,setProposedFileName]=useState("DOCUMENTO - REVISAR.pdf");
+  const [existingFileNames,setExistingFileNames]=useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [scanInstance, setScanInstance] = useState(0);
+  const [processingAttempt, setProcessingAttempt] = useState(0);
   const workflow = useScanWorkflow();
   const processingStartedRef = useRef(false);
   const pollingActiveRef = useRef(false);
@@ -116,12 +102,9 @@ export function DigitalizacionProcess() {
       generateNormalizedFilename({
         contractor: review.primaryContractor,
         kardexNumber: review.kardexNumber,
-        documentLabel:
-          config.documentClass === "MINUTA"
-            ? "MINUTA"
-            : review.instrumentType || "INSTRUMENTO",
-        documentNumber:
-          config.documentClass === "MINUTA" ? "" : review.instrumentNumber,
+        documentClass:config.documentClass,
+        instrumentNumber:review.instrumentNumber,
+        existingNames:existingFileNames,
       }),
     [
       config.documentClass,
@@ -129,9 +112,76 @@ export function DigitalizacionProcess() {
       review.instrumentType,
       review.kardexNumber,
       review.primaryContractor,
+      existingFileNames,
     ],
   );
-  useEffect(() => { if (phase !== "processing" || !workflow.sessionId || !workflow.cleanPdfReady || processingStartedRef.current) return; processingStartedRef.current = true; pollingActiveRef.current = true; void (async () => { try { const upload = workflow.uploadId ? { uploadId: workflow.uploadId, documentId: workflow.documentId, status: workflow.uploadStatus ?? "READY_FOR_OCR" } : await uploadCleanPdfFromSession({ sessionId: workflow.sessionId!, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber }); if (!workflow.uploadId) scanWorkflowStore.setUploadResult({ uploadId: upload.uploadId, documentId: upload.documentId, status: upload.status }); const job = workflow.ocrJobId ? { jobId: workflow.ocrJobId, status: workflow.ocrStatus ?? "QUEUED" } : await ocrProcessingService.start(upload.uploadId); if (!workflow.ocrJobId) scanWorkflowStore.setOcrJob(job.jobId, job.status); const poll = async () => { if (!pollingActiveRef.current) return; try { const current = await ocrProcessingService.status(job.jobId); if (["COMPLETED", "REVIEW_REQUIRED"].includes(current.status)) { if (!resultsLoadedRef.current) { resultsLoadedRef.current = true; scanWorkflowStore.setOcrResults(await ocrProcessingService.results(job.jobId)); } pollingActiveRef.current = false; setMessage("Reconocimiento completado"); if (!reviewTransitionDoneRef.current) { reviewTransitionDoneRef.current = true; setPhase("review"); } return; } if (["FAILED", "CANCELLED"].includes(current.status)) { pollingActiveRef.current = false; setMessage(current.status === "CANCELLED" ? "El procesamiento fue cancelado." : "No se pudo leer el documento."); return; } setMessage(current.status === "QUEUED" ? "Documento en espera de procesamiento" : `${current.processedPages ?? 0} / ${current.totalPages ?? 0} páginas`); pollingTimeoutRef.current = setTimeout(() => void poll(), 2000); } catch { setMessage("Reconectando con el procesamiento"); pollingTimeoutRef.current = setTimeout(() => void poll(), 3000); } }; void poll(); } catch (error) { pollingActiveRef.current = false; scanWorkflowStore.setUploadError(error instanceof Error ? error.message : "No se pudo procesar el documento."); setMessage("No se pudo procesar el documento."); } })(); return () => { pollingActiveRef.current = false; if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current); }; }, [config.documentClass, config.registryTypeId, config.tomeNumber, phase, workflow.cleanPdfReady, workflow.ocrJobId, workflow.sessionId, workflow.uploadId]);
+  useEffect(()=>{void import("../data/repository").then(({getDocuments})=>getDocuments().then(rows=>setExistingFileNames(rows.map(row=>row.fileName))).catch(()=>undefined))},[]);
+  useEffect(()=>{setProposedFileName(normalizedName)},[normalizedName]);
+  useEffect(()=>{
+    const fields=workflow.extractedFields as Array<{fieldName?:string;normalizedValue?:string;extractedValue?:string}>|undefined;
+    if(!fields?.length)return;
+    const read=(name:string)=>{const field=fields.find(item=>item.fieldName===name);return String(field?.normalizedValue||field?.extractedValue||'').trim()};
+    setReview(current=>({...current,kardexNumber:current.kardexNumber||read('kardexNumber'),minuteNumber:current.minuteNumber||read('minuteNumber'),instrumentType:current.instrumentType||read('instrumentType'),instrumentNumber:current.instrumentNumber||read('instrumentNumber'),primaryContractor:current.primaryContractor||read('contractor')}));
+  },[workflow.extractedFields]);
+  useEffect(() => {
+    if (phase !== "processing" || !workflow.sessionId || !file || processingStartedRef.current) return;
+    processingStartedRef.current = true;
+    pollingActiveRef.current = true;
+    void (async () => {
+      try {
+        scanWorkflowStore.setProcessingProgress({ status: "UPLOADING", currentStage: "PREPARING" });
+        const upload = workflow.uploadId
+          ? { uploadId: workflow.uploadId, documentId: workflow.documentId, status: workflow.uploadStatus ?? "READY_FOR_OCR" }
+          : await uploadCleanPdfFromSession({ sessionId: workflow.sessionId!, documentClass: config.documentClass, registryTypeId: config.registryTypeId, tomeNumber: config.tomeNumber, file });
+        if (!workflow.uploadId) scanWorkflowStore.setUploadResult(upload);
+        let job: { jobId: string; status: string };
+        try {
+          job = workflow.ocrJobId ? { jobId: workflow.ocrJobId, status: workflow.ocrStatus ?? "OCR_PENDING" } : await ocrProcessingService.start(upload.uploadId);
+        } catch (error) {
+          scanWorkflowStore.setProcessingFailure(error instanceof ApiError && error.status >= 500 ? "BACKEND_UNAVAILABLE" : "OCR_START_FAILED");
+          return;
+        }
+        if (!workflow.ocrJobId) scanWorkflowStore.setOcrJob(job.jobId, job.status);
+        const poll = async () => {
+          if (!pollingActiveRef.current) return;
+          try {
+            const current = await ocrProcessingService.status(job.jobId);
+            scanWorkflowStore.setProcessingProgress(current);
+            if (["COMPLETED", "REVIEW_REQUIRED"].includes(current.status)) {
+              const results = await ocrProcessingService.results(job.jobId);
+              resultsLoadedRef.current = true;
+              scanWorkflowStore.setOcrResults(results, current.status);
+              pollingActiveRef.current = false;
+              if (!reviewTransitionDoneRef.current) {
+                reviewTransitionDoneRef.current = true;
+                setPhase("review");
+              }
+              return;
+            }
+            if (["FAILED", "CANCELLED"].includes(current.status)) {
+              pollingActiveRef.current = false;
+              scanWorkflowStore.setProcessingFailure("OCR_ENGINE_FAILED", current.error ?? undefined);
+              return;
+            }
+            pollingTimeoutRef.current = setTimeout(() => void poll(), 2000);
+          } catch (error) {
+            pollingActiveRef.current = false;
+            const code = error instanceof ApiError && error.status === 404 ? "PROCESSING_JOB_NOT_FOUND" : "BACKEND_UNAVAILABLE";
+            scanWorkflowStore.setProcessingFailure(code);
+          }
+        };
+        void poll();
+      } catch (error) {
+        pollingActiveRef.current = false;
+        const code = error instanceof ApiError && error.status >= 500 ? "BACKEND_UNAVAILABLE" : "UPLOAD_FAILED";
+        scanWorkflowStore.setProcessingFailure(code);
+      }
+    })();
+    return () => {
+      pollingActiveRef.current = false;
+      if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
+    };
+  }, [config.documentClass, config.registryTypeId, config.tomeNumber, phase, file, workflow.ocrJobId, workflow.sessionId, workflow.uploadId, processingAttempt]);
   function clearCurrentScan() {
     pollingActiveRef.current = false;
     if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
@@ -150,6 +200,7 @@ export function DigitalizacionProcess() {
     setScanInstance((value) => value + 1);
   }
   function changeMode(next: Mode) {
+    if(scanWorkflowStore.get().acquisitionMode!=='IDLE')return;
     clearCurrentScan();
     setMode(next);
     setPhase("config");
@@ -161,6 +212,7 @@ export function DigitalizacionProcess() {
       !selected.name.toLowerCase().endsWith(".pdf")
     ) {
       setMessage("Solo se permiten archivos PDF.");
+      scanWorkflowStore.finishAcquisition("FAILED");
       return;
     }
     scanWorkflowStore.resetWorkflow();
@@ -177,6 +229,7 @@ export function DigitalizacionProcess() {
     } catch {
       setFile(undefined);
       setMessage("No se pudo abrir el PDF seleccionado.");
+      scanWorkflowStore.finishAcquisition("FAILED");
     }
   }
   async function receiveNativeSession(session: ScanSession) {
@@ -196,10 +249,8 @@ export function DigitalizacionProcess() {
   }
   function acceptCleanPdf(clean: File) {
     setFile(clean);
-    setProcessingStatus("COMPLETED");
-    setMessage(
-      "PDF preparado correctamente. El reconocimiento documental se integrará en la siguiente fase.",
-    );
+    setProcessingStatus("PROCESSING");
+    setMessage("");
     void import("../data/repository").then(({ addAudit }) =>
       addAudit(
         "CLEAN_PDF_GENERATED",
@@ -209,9 +260,22 @@ export function DigitalizacionProcess() {
     );
     setPhase("processing");
   }
-  function openReview() {
-    setReview(emptyReview);
-    setPhase("review");
+  function retryProcessing() {
+    if (workflow.processingErrorCode !== "BACKEND_UNAVAILABLE") scanWorkflowStore.clearOcrJob();
+    processingStartedRef.current = false;
+    resultsLoadedRef.current = false;
+    reviewTransitionDoneRef.current = false;
+    setProcessingAttempt((value) => value + 1);
+  }
+  function applyProcessedName(){
+    if(!file)return;
+    const safeName=normalizePdfFilename(proposedFileName,existingFileNames);
+    setProposedFileName(safeName);
+    setFile(new File([file],safeName,{type:'application/pdf',lastModified:file.lastModified}));
+    setMessage(`Nombre aplicado a la copia procesada: ${safeName}. El PDF original de CZUR permanece intacto.`);
+    const acquisition=scanWorkflowStore.get();
+    if(acquisition.acquisitionMode==='CZUR'&&acquisition.acquisitionSessionId)void czurDesktop.completeAcquisition(acquisition.acquisitionSessionId).catch(()=>undefined);
+    scanWorkflowStore.finishAcquisition('COMPLETED');
   }
   async function archiveDocument() {
     if (!file) return;
@@ -301,6 +365,7 @@ export function DigitalizacionProcess() {
         </button>
         <button
           className={mode === "existing" ? "active" : ""}
+          disabled={workflow.acquisitionMode!=="IDLE"}
           onClick={() => changeMode("existing")}
         >
           Archivos existentes
@@ -337,11 +402,15 @@ export function DigitalizacionProcess() {
           )}{" "}
           {phase === "processing" && (
             <Processing
-              file={file}
-              status={processingStatus}
-              message={message}
-              onBack={() => setPhase("preview")}
-              onContinue={openReview}
+              workflow={workflow}
+              pages={pages}
+              origin={workflow.originalFilename ? "CZUR" : "PDF manual"}
+              config={config}
+              onBack={() => {
+                const active = workflow.ocrJobId && !["COMPLETED", "REVIEW_REQUIRED", "FAILED", "CANCELLED"].includes(workflow.ocrStatus ?? "");
+                if (!active || window.confirm("El reconocimiento sigue activo. Puede volver al Control previo sin perder el proceso.")) setPhase("preview");
+              }}
+              onRetry={retryProcessing}
             />
           )}{" "}
           {phase === "review" && file && (
@@ -350,11 +419,13 @@ export function DigitalizacionProcess() {
               values={review}
               setValues={setReview}
               normalizedName={normalizedName}
+              proposedFileName={proposedFileName}
+              setProposedFileName={setProposedFileName}
               pages={pages}
               saving={saving}
               message={message}
               onBack={() => setPhase("preview")}
-              onArchive={archiveDocument}
+              onArchive={applyProcessedName}
             />
           )}{" "}
           {phase === "archived" && (
@@ -495,18 +566,25 @@ function Configuration({
   );
 }
 function Processing({
-  file,
-  status,
-  message,
+  workflow,
+  pages,
+  origin,
+  config,
   onBack,
-  onContinue,
+  onRetry,
 }: {
-  file?: File;
-  status: ProcessingStatus;
-  message: string;
+  workflow: ReturnType<typeof useScanWorkflow>;
+  pages: number;
+  origin: "CZUR" | "PDF manual";
+  config: ScanConfiguration;
   onBack: () => void;
-  onContinue: () => void;
+  onRetry: () => void;
 }) {
+  const summary = processingSummary(workflow.currentStage, workflow.ocrStatus);
+  const stageLabels = processingStageLabels(workflow.currentStage, workflow.ocrStatus);
+  const terminal = ["COMPLETED", "REVIEW_REQUIRED"].includes(workflow.ocrStatus ?? "");
+  const failed = workflow.ocrStatus === "FAILED" || Boolean(workflow.processingErrorCode);
+  const folio = config.folioQuantity.trim() || "No indicado";
   return (
     <section className="card processingCard phaseOneProcessing">
       <div className="stepHeading">
@@ -515,31 +593,31 @@ function Processing({
       </div>
       <p className="processingFile">
         <FileText size={16} />
-        {file?.name}
+        document-clean.pdf
       </p>
-      <div className={`processingNotice ${status.toLowerCase()}`}>
-              <b>Estado: {PROCESS_STATUS_LABELS[status]}</b>
-        <span>
-          {message ||
-            "PDF preparado correctamente. El reconocimiento documental se integrará en la siguiente fase."}
-        </span>
+      <p className="sectionSubtitle">
+        {workflow.processedPages !== undefined && workflow.totalPages ? `Procesando página ${Math.min(workflow.processedPages, workflow.totalPages)} de ${workflow.totalPages}` : `${workflow.totalPages ?? pages} páginas`}
+        {workflow.progress !== undefined ? ` · ${workflow.progress}%` : ""}
+        {` · Origen: ${origin} · ${config.documentClass} · Tomo ${config.tomeNumber || "No aplica"} · Fojas ${folio}`}
+      </p>
+      <div className={`processingNotice ${failed ? "failed" : terminal ? "completed" : "processing"}`}>
+        <b>Estado: {summary.title}</b>
+        <span>{failed ? friendlyProcessingError(workflow.processingErrorCode) : summary.detail}</span>
       </div>
       <div className="stageList">
-        {processingStages.map((stage) => (
+        {processingStageNames.map((stage, index) => (
           <div key={stage}>
             <span />
             <b>{stage}</b>
-              <em>{PROCESS_STAGE_LABELS[status]}</em>
+            <em>{stageLabels[index]}</em>
           </div>
         ))}
       </div>
       <footer className="qualityActions">
-        <button className="btn" onClick={onBack}>
+        <button className="btn" disabled={terminal} onClick={onBack}>
           Volver al Control previo
         </button>
-        <button className="btn primary" disabled onClick={onContinue}>
-          Reconocimiento pendiente
-        </button>
+        {failed && <button className="btn primary" onClick={onRetry}>{workflow.processingErrorCode === "BACKEND_UNAVAILABLE" ? "Reanudar seguimiento" : "Reintentar reconocimiento"}</button>}
       </footer>
     </section>
   );
@@ -549,6 +627,8 @@ function Review({
   values,
   setValues,
   normalizedName,
+  proposedFileName,
+  setProposedFileName,
   pages,
   saving,
   message,
@@ -559,6 +639,8 @@ function Review({
   values: ReviewValues;
   setValues: React.Dispatch<React.SetStateAction<ReviewValues>>;
   normalizedName: string;
+  proposedFileName:string;
+  setProposedFileName:(value:string)=>void;
   pages: number;
   saving: boolean;
   message: string;
@@ -612,9 +694,9 @@ function Review({
         )}
       </div>
       <div className="normalizedNamePreview">
-        <b>Nombre normalizado futuro</b>
-        <span>{normalizedName}</span>
-        <small>El archivo original no será renombrado en esta fase.</small>
+        <b>Nombre propuesto del archivo</b>
+        <input className="field" aria-label="Nombre propuesto del archivo" value={proposedFileName} onChange={event=>setProposedFileName(event.target.value)}/>
+        <small>Sugerencia actual: {normalizedName}. El archivo original exportado por CZUR no será renombrado.</small>
       </div>
       {message && <p className="validationError">{message}</p>}
       <footer className="qualityActions">
@@ -622,7 +704,7 @@ function Review({
           Volver
         </button>
         <button className="btn primary" disabled={saving} onClick={onArchive}>
-          {saving ? "Archivando…" : "Archivar documento"}
+          Aplicar nombre a la copia procesada
         </button>
       </footer>
     </section>

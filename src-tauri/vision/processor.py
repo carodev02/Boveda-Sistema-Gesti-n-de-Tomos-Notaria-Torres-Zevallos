@@ -91,7 +91,7 @@ def preprocess(source: Path, session: Path) -> dict:
 
 def generate_clean_pdf(session: Path, pages: list[dict] | None = None) -> dict:
     processed = session / "processed"
-    output = session / "output" / "document-clean.pdf"
+    output = session / "document-clean.pdf"
     output.parent.mkdir(parents=True, exist_ok=True)
     selected = pages or sorted(processed.glob("page-*.png"))
     if isinstance(selected, list) and selected and isinstance(selected[0], dict):
