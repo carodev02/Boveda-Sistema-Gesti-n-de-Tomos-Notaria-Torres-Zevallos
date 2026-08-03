@@ -1,121 +1,109 @@
-# SIGADN
+# Bóveda
 
-Sistema Inteligente de Gestión y Archivo Documental Notarial para la Notaría Torres Zevallos.
+Sistema centralizado de gestión y archivo documental notarial. La aplicación relaciona minutas y actas por kardex, administra tomos y fojas, procesa documentos mediante OCR/QR y conserva los PDF en un servidor central.
 
-SIGADN busca centralizar, digitalizar, organizar y consultar minutas y registros notariales, reduciendo el registro manual y relacionando los documentos mediante el número de kardex.
+## Arquitectura
 
-## Situación actual
+- `src/`: interfaz React y TypeScript.
+- `src-tauri/`: aplicación Windows, integración CZUR y procesamiento local.
+- `src-tauri/vision/`: procesador Python/OpenCV y datos de Tesseract.
+- `backend/`: API Express, autenticación, permisos, Prisma y pruebas.
+- `backend/prisma/`: esquema y migraciones PostgreSQL.
+- `docker-compose.yml`: PostgreSQL 18 y API/OCR central.
+- `tools/`: utilidades de diagnóstico y evaluación OCR.
 
-Actualmente, las minutas y los registros notariales se registran manualmente en archivos Excel y se guardan en carpetas. La organización histórica suele seguir una estructura aproximada de tipo de registro, año o bienio, tomo, fojas, contratante y archivo identificado por kardex.
+Los documentos, respaldos, instaladores, secretos, runtimes y resultados de compilación no forman parte del repositorio.
 
-La información está distribuida entre Excel, carpetas, nombres de archivos y documentos escaneados. La búsqueda y validación dependen en gran medida del conocimiento del personal, lo que dificulta encontrar contradicciones y mantener una ubicación uniforme.
+## Requisitos de desarrollo
 
-## Solución propuesta
+- Node.js 22 y npm 11.
+- Rust estable y WebView2 para Tauri.
+- Docker Desktop para PostgreSQL o para ejecutar el servidor completo.
+- Tesseract con idioma español cuando el backend se ejecute fuera de Docker.
+- Python compatible y las dependencias de `src-tauri/vision/requirements.txt` para desarrollo local del flujo CZUR.
 
-SIGADN analiza los archivos existentes y los documentos digitalizados para identificar kardex, relacionar minutas con registros notariales, obtener acto jurídico y contratante principalmente desde la minuta, y organizar la ubicación documental. Los campos dudosos se presentan para revisión, sin modificar los PDF originales.
+## Instalación local
 
-El kardex es la clave principal de relación:
-
-```text
-Compraventa
-└── Kardex 333
-    ├── Minuta
-    └── Registro notarial
+```powershell
+npm ci
+npm --prefix backend ci
+Copy-Item .env.example .env
+Copy-Item backend/.env.example backend/.env
+Copy-Item servidor-docker.env.example servidor-docker.env
+docker compose --env-file servidor-docker.env up -d postgres
+npm --prefix backend run prisma:generate
+npm --prefix backend run prisma:deploy
 ```
 
-## Flujo principal
+Antes de iniciar por primera vez, sustituya todas las claves de ejemplo. Para crear la cuenta inicial configure `SEED_ADMIN_*` en `backend/.env` y ejecute:
 
-### Escanear documento
-
-Configuración mínima → abrir CZUR → recibir escaneo → procesar hoja → control previo → reconocimiento y extracción posteriores → revisión → archivado posterior.
-
-### Archivos existentes
-
-Seleccionar carpeta y, opcionalmente, Excel → inventario progresivo → lectura de la estructura de carpetas → validación con Excel → análisis documental posterior → revisión de contradicciones → importación de una copia normalizada.
-
-## Datos principales
-
-- **Kardex:** identificador que relaciona documentos del mismo expediente.
-- **Minuta:** documento fuente para acto jurídico y contratante principal.
-- **Registro notarial:** instrumento formal relacionado con el kardex.
-- **Tipo de registro:** escrituras públicas, poderes, testamentos, actas, vehicular u otros catálogos.
-- **Acto jurídico:** compraventa, donación, poder especial, hipoteca, entre otros.
-- **Tomo, año/bienio y fojas:** datos de ubicación documental.
-- **Contratante principal:** persona o entidad principal asociada al kardex.
-
-## Tecnologías y programas
-
-| Tecnología | Función |
-|---|---|
-| React + TypeScript | Interfaz de usuario. |
-| Vite | Desarrollo y compilación del frontend. |
-| Tauri | Aplicación de escritorio y acceso controlado al equipo local. |
-| Rust | Comandos nativos, sesiones de escaneo, archivos y vigilancia local. |
-| Node.js + Express | API, autenticación, permisos y lógica del servidor. |
-| PostgreSQL | Base de datos central. |
-| Prisma | Cliente, esquema y migraciones de PostgreSQL. |
-| Python | Procesamiento documental independiente. |
-| OpenCV | Detección de hoja y corrección de perspectiva. |
-| PyMuPDF | Lectura y renderizado de PDF. |
-| Tesseract | Motor OCR local preparado para procesamiento documental. |
-| CZUR | Captura y exportación de documentos físicos cuando la estación esté configurada. |
-
-## Estructura del proyecto
-
-```text
-SIGADN/
-├── src/                  Frontend React y servicios de interfaz
-├── src-tauri/            Aplicación Tauri, comandos Rust y visión Python
-├── src-tauri/vision/     Processor Python, entorno virtual y dependencias de visión
-├── backend/              API Express, Prisma, migraciones y pruebas
-├── server/               Código heredado o auxiliar; revisar antes de reutilizar
-├── package.json           Scripts del frontend y Tauri
-└── docker-compose.yml      Servicios locales del backend, si se utiliza en la estación
+```powershell
+npm --prefix backend run seed
 ```
 
-## Ejecución
+Desarrollo:
 
-### Frontend en navegador
-
-```bash
-npm install
+```powershell
+npm run backend:dev
 npm run dev
 ```
 
-El navegador permite probar la interfaz. Las funciones que requieren acceso local, como la estación CZUR, requieren Desktop.
+Aplicación de escritorio:
 
-### Backend
-
-```bash
-npm --prefix backend install
-npm run backend:dev
-```
-
-Pruebas y compilación del backend:
-
-```bash
-npm run backend:test
-npm run backend:build
-```
-
-### Aplicación de escritorio
-
-```bash
-npm install
+```powershell
 npm run tauri:dev
 ```
 
-Para generar el ejecutable:
+## Servidor central Docker
 
-```bash
-npm run tauri:build
+En Windows, abra Docker Desktop y ejecute `CONFIGURAR-SERVIDOR-DOCKER.bat` como administrador. El configurador:
+
+1. genera `servidor-docker.env` con secretos aleatorios;
+2. construye PostgreSQL, API y OCR;
+3. habilita el puerto 4000 únicamente para la red privada local;
+4. registra el inicio automático;
+5. verifica `/api/health/ready`.
+
+Las estaciones se configuran ejecutando `CONFIGURAR-ESTACION-BOVEDA.bat` e indicando la URL fija del servidor, por ejemplo `http://192.168.10.141:4000`.
+
+`RESTAURAR-DATOS-SERVIDOR-DOCKER.bat` acepta una copia externa con esta estructura:
+
+```text
+migracion/
+├── sigadn.dump
+└── storage/
 ```
 
-## Estado actual de las fases
+La carpeta `migracion/` está excluida de Git porque contiene información notarial real.
 
-- **Fase 1:** flujo e interfaz inicial del Centro de Digitalización, modelo documental y revisión diferenciada: terminada y aprobada.
-- **Fase 2:** inventario de carpetas, lectura de Excel y validación preliminar: terminada y aprobada.
-- **Fase 3:** integración de visión Python/OpenCV, renderizado y generación de PDF limpio preparados; el cierre del recorrido visual completo desde Tauri y la prueba física CZUR aún requieren verificación.
-- **Fase 4:** worker y extractores iniciales preparados, pero la integración completa de OCR, QR, KardexCase y revisión documental aún no está cerrada.
+## OCR de escritorio
 
-No se considera terminada una fase únicamente porque compile: debe cumplir su prueba de aceptación real y conservar los documentos originales.
+Para desarrollo puede crear el entorno local:
+
+```powershell
+python -m venv src-tauri/vision/.venv
+src-tauri/vision/.venv/Scripts/pip install -r src-tauri/vision/requirements.txt
+```
+
+Los instaladores oficiales incorporan un runtime Python preparado en `src-tauri/vision/runtime`. Ese runtime binario se genera durante el proceso de entrega y no se versiona. El servidor Docker instala sus propias dependencias OCR desde `requirements.txt`.
+
+## Verificación
+
+```powershell
+npm run build
+npm run lint
+npm run backend:build
+npm run backend:test
+```
+
+## Seguridad del repositorio
+
+Nunca suba:
+
+- `.env`, `servidor-docker.env` o contraseñas;
+- `backend/storage/` o respaldos `*.dump`;
+- `ENTREGA-OTRA-PC/`, instaladores o datos de migración;
+- runtimes Python, `node_modules`, `dist` o `src-tauri/target`;
+- logs, capturas de diagnóstico o datos exportados.
+
+Use únicamente datos ficticios en pruebas y ejemplos.

@@ -1,25 +1,48 @@
+# Dependencias y compilaciones reproducibles
 node_modules/
+**/node_modules/
 dist/
-*.log
+**/dist/
+src-tauri/target/
+.tsbuild/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
-server/usersApi.js
-server/usersApi.d.ts
-server/profileApi.js
-server/profileApi.d.ts
-server/data/*.json
+
+# Configuración local y secretos
 .env
 .env.*
 !.env.example
-backend/import-reports/
-backend/storage/
+!**/.env.example
+servidor-docker.env
 
+# Datos operativos y respaldos notariales (nunca deben subirse a Git)
+backend/storage/
+backend/logs/
+backend/import-reports/
+ENTREGA-OTRA-PC/
+migracion/
+*.dump
+*.backup
+
+# Python y OCR generados localmente
+**/__pycache__/
+*.py[cod]
 src-tauri/vision/.venv/
-src-tauri/target/
+src-tauri/vision/runtime/
 .venv-vision/
-dist/
-node_modules/
-*.tsbuildinfo
+
+# Archivos generados por Tauri y pruebas visuales
+src-tauri/gen/
+tmp/
+outputs/
+*-visual.png
+usuario-modal.png
+scheduled-task-diagnostic.json
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 *.log
-src-tauri/target/

@@ -1,0 +1,1 @@
+export function normalizedTomeNumber(value:unknown){const text=String(value??'').trim();if(!/^\d+$/.test(text))return undefined;const number=Number(text);return Number.isSafeInteger(number)&&number>0?String(number):undefined}

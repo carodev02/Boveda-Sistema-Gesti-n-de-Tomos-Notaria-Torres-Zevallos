@@ -21,11 +21,13 @@ import type {
 } from "../domain/document-domain";
 import { generateNormalizedFilename,normalizePdfFilename } from "../utils/documentFilename";
 import {processAcquiredDocument} from "../services/acquiredDocumentProcessing";
-import { findOcrField,mergeOcrFieldsIntoReview, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
+import { findOcrField,mergeOcrFieldsIntoReview,normalizeOcrFieldName, ocrProcessingService, reviewTargetsFromOcrFields, type OcrField } from "../services/ocrProcessingService";
 import { scanWorkflowStore, useScanWorkflow } from "../services/scanWorkflowStore";
 import { canStartProcessing, friendlyProcessingError, processingStageLabels, processingStageNames, processingSummary } from "../services/scanProcessingState";
 import { ApiError } from "../services/apiClient";
 import { czurDesktop } from "../services/czurDesktop";
+import {auditApi} from "../services/auditApi";
+import {normalizedTomeNumber} from "../utils/tomeNumber";
 import "./digitalizacion.css";
 import "../styles/digitalization-workflow.css";
 
@@ -87,16 +89,14 @@ export function DigitalizacionProcess() {
   const ocrJobAppliedRef=useRef<string|undefined>(undefined);
   const processingEffectMountedRef = useRef(false);
   const phaseRef = useRef<Phase>(phase);
-  phaseRef.current = phase;
   const fileRef = useRef<HTMLInputElement>(null);
   const registryType = registryTypeById(config.registryTypeId);
   const periodValid =
     /^\d{4}(?:-\d{4})?$/.test(config.period) &&
     (!config.period.includes("-") ||
       Number(config.period.slice(0, 4)) <= Number(config.period.slice(5)));
-  const tomeValid =
-    Boolean(config.tomeNumber.trim()) ||
-    Boolean(registryType && !registryType.tomeRequired);
+  const normalizedTome = normalizedTomeNumber(config.tomeNumber);
+  const tomeValid = Boolean(normalizedTome);
   const folioRange = parseFolioRange(config.folioQuantity);
   const configReady = Boolean(
     config.documentClass &&
@@ -123,7 +123,8 @@ export function DigitalizacionProcess() {
     ],
   );
   useEffect(()=>{void import("../data/repository").then(({getDocuments})=>getDocuments().then(rows=>setExistingFileNames(rows.map(row=>row.fileName))).catch(()=>undefined))},[]);
-  useEffect(()=>{setProposedFileName(normalizedName)},[normalizedName]);
+  useEffect(()=>{phaseRef.current=phase},[phase]);
+  useEffect(()=>{const update=setTimeout(()=>setProposedFileName(normalizedName),0);return()=>clearTimeout(update)},[normalizedName]);
   useEffect(()=>{if(phase==='review')processTrace(`[REVIEW] campos mostrados: ${(scanWorkflowStore.get().extractedFields??[]).length}`)},[phase]);
   useEffect(()=>{
     const fields=workflow.extractedFields as OcrField[]|undefined;
@@ -154,7 +155,7 @@ export function DigitalizacionProcess() {
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADING", currentStage: "PREPARING" });
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 30000);
-        const acquired = await processAcquiredDocument({sessionId:initial.sessionId,sourceType:initial.sessionId?'CZUR':'MANUAL',state:initial,signal:controller.signal,metadata:{documentClass:config.documentClass,registryTypeId:config.registryTypeId,tomeNumber:config.tomeNumber,folioRangeStart:folioRange?.start,folioRangeEnd:folioRange?.end,year:/^\d{4}$/.test(config.period)?Number(config.period):undefined,bienniumStart:config.period.includes('-')?Number(config.period.slice(0,4)):undefined,bienniumEnd:config.period.includes('-')?Number(config.period.slice(5)):undefined,file}}).finally(()=>clearTimeout(timer));
+        const acquired = await processAcquiredDocument({sessionId:initial.sessionId,sourceType:initial.sessionId?'CZUR':'MANUAL',state:initial,signal:controller.signal,metadata:{documentClass:config.documentClass,registryTypeId:config.registryTypeId,tomeNumber:normalizedTome,folioRangeStart:folioRange?.start,folioRangeEnd:folioRange?.end,year:/^\d{4}$/.test(config.period)?Number(config.period):undefined,bienniumStart:config.period.includes('-')?Number(config.period.slice(0,4)):undefined,bienniumEnd:config.period.includes('-')?Number(config.period.slice(5)):undefined,file}}).finally(()=>clearTimeout(timer));
         const {upload,job}=acquired;
         if (!initial.uploadId) scanWorkflowStore.setUploadResult({ ...upload, status: "COMPLETED" });
         processTrace(`Upload completado: ${shortId(upload.uploadId)}`);
@@ -210,7 +211,7 @@ export function DigitalizacionProcess() {
       }
     })();
     return cleanup;
-  }, [config.documentClass, config.folioQuantity, config.period, config.registryTypeId, config.tomeNumber, phase, file, processingAttempt]);
+  }, [config.documentClass, config.folioQuantity, config.period, config.registryTypeId, config.tomeNumber, normalizedTome, folioRange?.start, folioRange?.end, phase, file, processingAttempt]);
   function clearCurrentScan() {
     pollingActiveRef.current = false;
     if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
@@ -255,6 +256,7 @@ export function DigitalizacionProcess() {
     try {
       const bytes = new Uint8Array(await selected.arrayBuffer());
       const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+      await auditApi.record('MANUAL_PDF_SELECTED','Digitalización',selected.name);
       setPages(pdf.numPages);
       setPhase("preview");
     } catch {
@@ -269,7 +271,7 @@ export function DigitalizacionProcess() {
     if(session.sourceType==='CZUR'&&!isCurrent())return;
     scanWorkflowStore.setConfiguration(config);
     scanWorkflowStore.setSession(session);
-    setMessage(session.error ?? "Sesión recibida desde SIGADN Desktop.");
+    setMessage(session.error ?? "Sesión recibida desde Bóveda Desktop.");
     if (session.status === "READY_FOR_REVIEW") {
       try {
         const bytes = await czurDesktop.readOriginal(session.id);
@@ -289,19 +291,13 @@ export function DigitalizacionProcess() {
     scanWorkflowStore.setCleanPdfReady(true);
     setFile(clean);
     setMessage("");
-    void import("../data/repository").then(({ addAudit }) =>
-      addAudit(
-        "CLEAN_PDF_GENERATED",
-        "Centro de Digitalización",
-        "Copia temporal document-clean.pdf",
-      ),
-    );
+    void auditApi.record('CLEAN_PDF_GENERATED','Centro de Digitalización','Copia temporal document-clean.pdf');
     setPhase("processing");
   }
   function cancelPreview(){
     const state=scanWorkflowStore.get();const source=state.acquisitionMode==='CZUR'?'CZUR':'MANUAL';const sessionId=state.sessionId;const acquisitionId=state.acquisitionSessionId;
     scanWorkflowStore.cancelCurrentDocument();clearCurrentScan();setMode('scan');setPhase('config');
-    void (async()=>{let partialFailure=false;if(source==='CZUR'&&acquisitionId){const timeout=new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('CANCEL_TIMEOUT')),4000));try{await Promise.race([czurDesktop.cancelSession(acquisitionId,false),timeout]);if(sessionId&&sessionId!==acquisitionId)await czurDesktop.cancelSession(sessionId,true)}catch{partialFailure=true}}await import('../data/repository').then(({addAudit})=>addAudit('DOCUMENT_SCAN_CANCELLED','Centro de Digitalización',`Sesión ${(sessionId??acquisitionId)?.slice(0,8)??'manual'} · Origen ${source} · Control previo`,partialFailure?'Parcial':'Exitoso')).catch(()=>{partialFailure=true});if(partialFailure&&scanWorkflowStore.get().acquisitionMode==='IDLE')setMessage('No se pudo cancelar completamente la sesión. Puede restablecerla iniciando un nuevo documento.')})();
+    void (async()=>{let partialFailure=false;if(source==='CZUR'&&acquisitionId){const timeout=new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('CANCEL_TIMEOUT')),4000));try{await Promise.race([czurDesktop.cancelSession(acquisitionId,false),timeout]);if(sessionId&&sessionId!==acquisitionId)await czurDesktop.cancelSession(sessionId,true)}catch{partialFailure=true}}await auditApi.record('DOCUMENT_SCAN_CANCELLED','Centro de Digitalización',`Sesión ${(sessionId??acquisitionId)?.slice(0,8)??'manual'} · Origen ${source} · Control previo`,partialFailure?'ERROR':'EXITOSO').catch(()=>{partialFailure=true});if(partialFailure&&scanWorkflowStore.get().acquisitionMode==='IDLE')setMessage('No se pudo cancelar completamente la sesión. Puede restablecerla iniciando un nuevo documento.')})();
   }
   function retryProcessing() {
     if (workflow.processingErrorCode !== "BACKEND_UNAVAILABLE") scanWorkflowStore.clearOcrJob();
@@ -354,7 +350,7 @@ export function DigitalizacionProcess() {
         bienio: end ? config.period : undefined,
         bienniumStart: end ? start : undefined,
         bienniumEnd: end,
-        tomo: config.tomeNumber,
+        tomo: normalizedTome ?? "",
         folioRangeStart: folioRange?.start,
         folioRangeEnd: folioRange?.end,
         printedFolio: Number(review.printedFolio) || undefined,
@@ -367,13 +363,14 @@ export function DigitalizacionProcess() {
           config.documentClass === "REGISTRO_NOTARIAL"
             ? review.instrumentNumber
             : review.destinationInstrumentNumber,
-        contratantes: [review.primaryContractor],
+        contratantes: review.primaryContractor.split(/\s*;\s*|\r?\n/).map(value=>value.trim()).filter(Boolean),
         observaciones: "",
         fecha: review.documentDate,
         fechaRegistro: new Date().toLocaleDateString("es-PE"),
         cantidadPaginas: pages,
         documento: "CONFIRMED",
         ocr: "PROCESSED",
+        qrUrl: review.qrUrl || undefined,
         fileName: safeName,
         fileSize: processedCopy.size,
         file: processedCopy,
@@ -528,7 +525,7 @@ function Configuration({
   setConfig: React.Dispatch<React.SetStateAction<ScanConfiguration>>;
   periodValid: boolean;
 }) {
-  const registry = registryTypeById(config.registryTypeId);
+  const tomeValid = Boolean(normalizedTomeNumber(config.tomeNumber));
   return (
     <section className="card config phaseOneConfig">
       <div className="stepHeading">
@@ -577,7 +574,7 @@ function Configuration({
           </label>
         )}
         <label>
-          Número de tomo {registry?.tomeRequired === false ? "(opcional)" : "*"}
+          Número de tomo *
           <input
             className="field"
             value={config.tomeNumber}
@@ -587,10 +584,23 @@ function Configuration({
                 tomeNumber: event.target.value,
               }))
             }
+            onBlur={()=>{const normalized=normalizedTomeNumber(config.tomeNumber);if(normalized)setConfig(value=>({...value,tomeNumber:normalized}))}}
+          />
+          {!config.tomeNumber.trim()?<small className="validationError">El número de tomo es obligatorio.</small>:!tomeValid?<small className="validationError">Ingrese un número de tomo válido.</small>:null}
+        </label>
+        <label>
+          Año o bienio *
+          <input
+            className={`field ${config.period && !periodValid ? "invalidField" : ""}`}
+            value={config.period}
+            placeholder="1995 o 1994-1995"
+            onChange={(event) =>
+              setConfig((value) => ({ ...value, period: event.target.value }))
+            }
           />
         </label>
         <label>
-          Rango de fojas del tomo *
+          Rango de fojas indicado en el lomo *
           <input
             className="field"
             type="text"
@@ -605,18 +615,7 @@ function Configuration({
               }))
             }
           />
-          <small>Ingrese el rango donde se ubican los documentos en el tomo.</small>
-        </label>
-        <label>
-          Año o bienio *
-          <input
-            className={`field ${config.period && !periodValid ? "invalidField" : ""}`}
-            value={config.period}
-            placeholder="1995 o 1994-1995"
-            onChange={(event) =>
-              setConfig((value) => ({ ...value, period: event.target.value }))
-            }
-          />
+          <small>Ingrese el rango de fojas que figura en el lomo del tomo.</small>
         </label>
       </div>
     </section>
@@ -641,7 +640,6 @@ function Processing({
   const stageLabels = processingStageLabels(workflow.currentStage, workflow.ocrStatus);
   const terminal = ["COMPLETED", "REVIEW_REQUIRED"].includes(workflow.ocrStatus ?? "");
   const failed = workflow.ocrStatus === "FAILED" || Boolean(workflow.processingErrorCode);
-  const folio = config.folioQuantity.trim() || "No indicado";
   return (
     <section className="card processingCard phaseOneProcessing">
       <div className="stepHeading">
@@ -655,7 +653,9 @@ function Processing({
       <p className="sectionSubtitle">
         {workflow.processedPages !== undefined && workflow.totalPages ? `Procesando página ${Math.min(workflow.processedPages, workflow.totalPages)} de ${workflow.totalPages}` : `${workflow.totalPages ?? pages} páginas`}
         {workflow.progress !== undefined ? ` · ${workflow.progress}%` : ""}
-        {` · Origen: ${origin} · ${config.documentClass} · Tomo ${config.tomeNumber || "No aplica"} · Fojas ${folio}`}
+        {workflow.estimatedSecondsRemaining !== undefined && workflow.estimatedSecondsRemaining > 0 ? ` · Tiempo estimado: ${Math.ceil(workflow.estimatedSecondsRemaining)} s` : ""}
+        {workflow.failedPages ? ` · ${workflow.failedPages} página${workflow.failedPages===1?'':'s'} con error` : ""}
+        {` · Origen: ${origin} · ${config.documentClass} · Tomo ${config.tomeNumber || "No aplica"}`}
       </p>
       <div className={`processingNotice ${failed ? "failed" : terminal ? "completed" : "processing"}`}>
         <b>Estado: {summary.title}</b>
@@ -742,7 +742,6 @@ function Review({
             </div>
           )}
           <div><dt>Número de tomo</dt><dd>{config.tomeNumber || "No corresponde"}</dd></div>
-          <div><dt>Rango de fojas del tomo</dt><dd>{config.folioQuantity || "No corresponde"}</dd></div>
           <div><dt>Año o bienio</dt><dd>{config.period}</dd></div>
           <div><dt>Páginas del PDF</dt><dd>{pages}</dd></div>
         </dl>
@@ -784,6 +783,8 @@ function RegistryFields({
   reviewTargets:Set<keyof ReviewValues>;
   ocrFields:OcrField[];
 }) {
+  const qrRaw=ocrFields.find(field=>normalizeOcrFieldName(field.fieldName)==='qrrawvalue'&&Boolean(field.normalizedValue||field.extractedValue));
+  const qrRawValue=String(qrRaw?.normalizedValue||qrRaw?.extractedValue||'');
   return (
     <>
       <Field
@@ -824,7 +825,7 @@ function RegistryFields({
         onChange={(value) => update("instrumentNumber", value)}
       />
       <Field
-        label="Contratante principal relacionado *"
+        label="Contratante(s) relacionado(s) *"
         value={values.primaryContractor}
         requiresReview={reviewTargets.has("primaryContractor")}
         evidence={findOcrField(ocrFields,"primaryContractor")}
@@ -844,13 +845,7 @@ function RegistryFields({
           onChange={(value) => update("qrUrl", value)}
         />
       )}
-      <button
-        className="manualAction qrAction"
-        type="button"
-        onClick={() => update("qrUrl", values.qrUrl ? "" : "https://")}
-      >
-        {values.qrUrl ? "Quitar URL de QR" : "Agregar URL de QR"}
-      </button>
+      {!values.qrUrl&&qrRawValue&&<div className="normalizedNamePreview"><b>Contenido QR — requiere revisión</b><span>{qrRawValue}</span><small>Página {qrRaw?.pageNumber??'no indicada'}. El contenido no es una URL HTTP/HTTPS válida.</small></div>}
     </>
   );
 }
@@ -930,7 +925,7 @@ function MinuteFields({
         onChange={(value) => update("legalActId", value)}
       />
       <Field
-        label="Contratante principal *"
+        label="Contratante(s) *"
         value={values.primaryContractor}
         requiresReview={reviewTargets.has("primaryContractor")}
         evidence={findOcrField(ocrFields,"primaryContractor")}

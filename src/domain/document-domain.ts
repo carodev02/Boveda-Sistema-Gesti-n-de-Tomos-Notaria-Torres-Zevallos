@@ -222,8 +222,13 @@ export interface ScanSession{
   acquisitionId?:string;
   documentClass:DocumentClass;
   registryTypeId:string;
+  registryType?:string;
   tomeNumber:string;
+  periodKey?:string;
+  periodType?:'YEAR'|'BIENNIUM';
   folioQuantity:number;
+  folioRangeStart?:number;
+  folioRangeEnd?:number;
   year?:number;
   bienniumStart?:number;
   bienniumEnd?:number;

@@ -7,7 +7,7 @@ export type DetectedScanFile={id:string;displayName:string;size:number;pageCount
 export type ScanStatusEvent={sessionId:string;status:ScanUiStatus;message:string;file?:DetectedScanFile};
 export type ScanReadyForPreviewEvent={sessionId:string;pageCount:number;filename:string;sourceType:'CZUR'|'MANUAL'};
 export const SCAN_READY_FOR_PREVIEW='SCAN_READY_FOR_PREVIEW';
-const desktopOnly=()=>{if(!isTauriEnvironment())throw new Error('La integración con CZUR está disponible en SIGADN Desktop.')};
+const desktopOnly=()=>{if(!isTauriEnvironment())throw new Error('La integración con CZUR está disponible en Bóveda Desktop.')};
 const call=<T>(command:string,args?:Record<string,unknown>)=>{desktopOnly();return invoke<T>(command,args)};
 
 export const czurDesktop={

@@ -1,6 +1,11 @@
 import {Role,UserStatus} from '@prisma/client';
 import type {Request,Response} from 'express';
 import {prisma} from '../config/prisma.js';
+import {recordAudit} from '../services/audit.service.js';
+import {HttpError} from '../utils/http.js';
+
+const clientActions=new Set(['CZUR_SCAN_STARTED','MANUAL_PDF_SELECTED','CLEAN_PDF_GENERATED','DOCUMENT_SCAN_CANCELLED','IMPORT_BATCH_STARTED','IMPORT_FILE_COMPLETED','IMPORT_FILE_FAILED','IMPORT_BATCH_COMPLETED']);
+export async function createClientAudit(req:Request,res:Response){const action=String(req.body?.action??'').trim();if(!clientActions.has(action))throw new HttpError(400,'La acción de auditoría no está permitida.');const module=String(req.body?.module??'Digitalización').trim().slice(0,100);const detail=String(req.body?.detail??'').trim().slice(0,1000)||undefined;const event=await recordAudit(req,{action,module,detail,result:req.body?.result==='ERROR'?'ERROR':req.body?.result==='DENEGADO'?'DENEGADO':'EXITOSO'});res.status(201).json({id:event.id});}
 
 export async function listAudit(req:Request,res:Response){
   const global=([Role.NOTARIO,Role.ADMINISTRADOR] as Role[]).includes(req.auth!.role);

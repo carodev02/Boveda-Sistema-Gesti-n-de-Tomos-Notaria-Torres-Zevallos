@@ -7,6 +7,28 @@ use tauri::{AppHandle,Emitter,Manager,State,UserAttentionType};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
+#[cfg(windows)]
+fn hide_command_window(command:&mut Command){
+  use std::os::windows::process::CommandExt;
+  const CREATE_NO_WINDOW:u32=0x08000000;
+  command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_command_window(_command:&mut Command){}
+
+#[tauri::command]
+fn get_server_url()->Option<String>{
+  for key in ["BOVEDA_SERVER_URL","SERVER_URL"]{
+    if let Ok(value)=std::env::var(key){let clean=value.trim().trim_end_matches('/').to_string();if clean.starts_with("http://")||clean.starts_with("https://"){return Some(clean)}}
+  }
+  let local=std::env::var_os("LOCALAPPDATA")?;
+  let file=PathBuf::from(local).join("Boveda-NTZ").join("station.json");
+  let value:serde_json::Value=serde_json::from_str(&fs::read_to_string(file).ok()?).ok()?;
+  let clean=value.get("serverUrl")?.as_str()?.trim().trim_end_matches('/').to_string();
+  (clean.starts_with("http://")||clean.starts_with("https://")).then_some(clean)
+}
+
 #[derive(Default)]
 struct DesktopState{watcher:Mutex<Option<RecommendedWatcher>>,processed:Arc<Mutex<HashSet<PathBuf>>>,detected:Arc<Mutex<HashMap<String,PathBuf>>>,hashes:Arc<Mutex<HashSet<String>>>,preprocess:Arc<Mutex<()>>,resumed:Mutex<bool>}
 
@@ -33,7 +55,7 @@ struct ScanPage{
 #[derive(Clone,Serialize,Deserialize)]
 #[serde(rename_all="camelCase")]
 struct ScanSession{
-  id:String,source_type:Option<String>,acquisition_id:Option<String>,document_class:String,registry_type_id:String,tome_number:String,folio_quantity:u32,year:Option<u32>,
+  id:String,source_type:Option<String>,acquisition_id:Option<String>,document_class:String,registry_type_id:String,#[serde(default)]registry_type:String,tome_number:String,#[serde(default)]period_key:String,#[serde(default)]period_type:String,folio_quantity:u32,#[serde(default)]folio_range_start:Option<u32>,#[serde(default)]folio_range_end:Option<u32>,year:Option<u32>,
   biennium_start:Option<u32>,biennium_end:Option<u32>,started_at:String,czur_opened_at:Option<String>,
   detected_file_path:Option<String>,temporary_copy_path:Option<String>,original_file_name:Option<String>,
   clean_pdf_path:Option<String>,#[serde(default)]clean_pdf_filename:Option<String>,page_count:u32,status:String,error:Option<String>,pages:Vec<ScanPage>
@@ -89,10 +111,11 @@ fn save_session(app:&AppHandle,session:&ScanSession)->Result<(),String>{let path
 fn set_acquisition_sessions_status(app:&AppHandle,acquisition_id:&str,status:&str){let Ok(root)=sessions_dir(app)else{return};let Ok(entries)=fs::read_dir(root)else{return};for entry in entries.flatten(){let path=entry.path().join("session.json");let Ok(bytes)=fs::read(&path)else{continue};let Ok(mut session)=serde_json::from_slice::<ScanSession>(&bytes)else{continue};if session.id==acquisition_id||session.acquisition_id.as_deref()==Some(acquisition_id){session.status=status.into();let _=save_session(app,&session);}}}
 fn cancel_acquisition_sessions(app:&AppHandle,acquisition_id:&str){set_acquisition_sessions_status(app,acquisition_id,"CANCELLED")}
 fn vision_dir(app:&AppHandle)->Result<PathBuf,String>{let resource=app.path().resource_dir().map_err(|error|error.to_string())?.join("vision");if resource.is_dir(){return Ok(resource)}let development=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vision");if development.is_dir(){return Ok(development)}Err("VISION_NOT_FOUND: no existe el directorio vision".into())}
-fn python_path(app:&AppHandle)->Result<PathBuf,String>{let vision=vision_dir(app)?;let candidates=[vision.join(".venv/Scripts/python.exe"),vision.join(".venv/bin/python")];candidates.into_iter().find(|path|path.is_file()).ok_or_else(||format!("VENV_NOT_FOUND: no existe el intérprete Python en {}",vision.join(".venv").display()))}
+fn python_path(app:&AppHandle)->Result<PathBuf,String>{let vision=vision_dir(app)?;let candidates=[vision.join("runtime/python.exe"),vision.join(".venv/Scripts/python.exe"),vision.join(".venv/bin/python")];candidates.into_iter().find(|path|path.is_file()).ok_or_else(||format!("PYTHON_RUNTIME_NOT_FOUND: no existe el motor incluido en {}",vision.display()))}
 fn script_path(app:&AppHandle)->Result<PathBuf,String>{let script=vision_dir(app)?.join("processor.py");if script.is_file(){Ok(script)}else{Err(format!("PROCESSOR_NOT_FOUND: no existe {}",script.display()))}}
-fn run_processor(app:&AppHandle,source:&Path,session_dir:&Path)->Result<serde_json::Value,String>{let python=python_path(app)?;let script=script_path(app)?;let output=Command::new(python).args([script.to_string_lossy().as_ref(),"preprocess","--source",source.to_string_lossy().as_ref(),"--session",session_dir.to_string_lossy().as_ref()]).output().map_err(|error|format!("PYTHON_NOT_FOUND: {error}"))?;if !output.status.success(){return Err(format!("PYTHON_PROCESS_FAILED: {}",String::from_utf8_lossy(&output.stderr)))}serde_json::from_slice(&output.stdout).map_err(|error|format!("PYTHON_INVALID_JSON: {error}"))}
-fn run_clean_pdf(app:&AppHandle,session_dir:&Path)->Result<serde_json::Value,String>{let python=python_path(app)?;let script=script_path(app)?;let output=Command::new(python).args([script.to_string_lossy().as_ref(),"generate_clean_pdf","--source",session_dir.join("original.pdf").to_string_lossy().as_ref(),"--session",session_dir.to_string_lossy().as_ref()]).output().map_err(|error|format!("PYTHON_NOT_FOUND: {error}"))?;if !output.status.success(){return Err(format!("CLEAN_PDF_FAILED: {}",String::from_utf8_lossy(&output.stderr)))}serde_json::from_slice(&output.stdout).map_err(|error|format!("PYTHON_INVALID_JSON: {error}"))}
+fn python_command(app:&AppHandle)->Result<Command,String>{let vision=vision_dir(app)?;let mut command=Command::new(python_path(app)?);hide_command_window(&mut command);let runtime=vision.join("runtime");if runtime.is_dir(){command.env("PYTHONHOME",&runtime).env("PYTHONPATH",vision.join(".venv/Lib/site-packages"));}Ok(command)}
+fn run_processor(app:&AppHandle,source:&Path,session_dir:&Path)->Result<serde_json::Value,String>{let script=script_path(app)?;let output=python_command(app)?.args([script.to_string_lossy().as_ref(),"preprocess","--source",source.to_string_lossy().as_ref(),"--session",session_dir.to_string_lossy().as_ref()]).output().map_err(|error|format!("PYTHON_NOT_FOUND: {error}"))?;if !output.status.success(){return Err(format!("PYTHON_PROCESS_FAILED: {}",String::from_utf8_lossy(&output.stderr)))}serde_json::from_slice(&output.stdout).map_err(|error|format!("PYTHON_INVALID_JSON: {error}"))}
+fn run_clean_pdf(app:&AppHandle,session_dir:&Path)->Result<serde_json::Value,String>{let script=script_path(app)?;let output=python_command(app)?.args([script.to_string_lossy().as_ref(),"generate_clean_pdf","--source",session_dir.join("original.pdf").to_string_lossy().as_ref(),"--session",session_dir.to_string_lossy().as_ref()]).output().map_err(|error|format!("PYTHON_NOT_FOUND: {error}"))?;if !output.status.success(){return Err(format!("CLEAN_PDF_FAILED: {}",String::from_utf8_lossy(&output.stderr)))}serde_json::from_slice(&output.stdout).map_err(|error|format!("PYTHON_INVALID_JSON: {error}"))}
 
 #[tauri::command] fn get_czur_configuration(app:AppHandle)->PublicCzurConfiguration{let config=read_config(&app);let _=save_config(&app,&config);public_config(&config)}
 #[tauri::command] fn reset_czur_configuration(app:AppHandle)->Result<PublicCzurConfiguration,String>{let mut config=read_config(&app);config.executable_path=None;config.export_folder=None;config.detected_version=None;config.last_checked_at=None;save_config(&app,&config)?;Ok(public_config(&config))}
@@ -103,6 +126,18 @@ fn run_clean_pdf(app:&AppHandle,session_dir:&Path)->Result<serde_json::Value,Str
 #[tauri::command] fn configure_czur_export_folder(app:AppHandle)->Result<PublicCzurConfiguration,String>{let selected=app.dialog().file().blocking_pick_folder().and_then(|value|value.as_path().map(PathBuf::from)).ok_or("Selección cancelada.")?;if dangerous_folder(&selected){return Err("No se permite usar una carpeta crítica del sistema.".into())}fs::read_dir(&selected).map_err(|_|"La carpeta no se puede leer.")?;let mut config=read_config(&app);config.export_folder=Some(selected);config.last_checked_at=Some(Utc::now());save_config(&app,&config)?;Ok(public_config(&config))}
 #[tauri::command] fn test_czur_export_folder(app:AppHandle)->Result<PublicCzurConfiguration,String>{let mut config=read_config(&app);let folder=config.export_folder.as_ref().filter(|path|path.is_dir()&&!dangerous_folder(path)).ok_or("La carpeta habitual de CZUR no está configurada.")?;fs::read_dir(folder).map_err(|_|"SIGADN no puede leer la carpeta configurada.")?;let mut watcher=notify::recommended_watcher(|_:Result<notify::Event,notify::Error>|{}).map_err(|error|error.to_string())?;watcher.watch(folder,RecursiveMode::Recursive).map_err(|error|format!("No se puede vigilar la carpeta: {error}"))?;config.last_checked_at=Some(Utc::now());save_config(&app,&config)?;Ok(public_config(&config))}
 #[tauri::command] fn open_czur_scanner(app:AppHandle)->Result<serde_json::Value,String>{let config=read_config(&app);let executable=config.executable_path.filter(|path|validate_executable(path)).ok_or("CZUR Scanner no fue detectado.")?;Command::new(executable).spawn().map_err(|error|error.to_string())?;Ok(serde_json::json!({"openedAt":Utc::now()}))}
+#[tauri::command]
+fn open_external_url(url:String)->Result<(),String>{
+  let clean=url.trim();
+  if clean.len()>2048||clean.chars().any(char::is_control)||!(clean.starts_with("https://")||clean.starts_with("http://")){return Err("EXTERNAL_URL_INVALID".into())}
+  #[cfg(target_os="windows")]
+  let result=Command::new("rundll32").args(["url.dll,FileProtocolHandler",clean]).spawn();
+  #[cfg(target_os="macos")]
+  let result=Command::new("open").arg(clean).spawn();
+  #[cfg(all(unix,not(target_os="macos")))]
+  let result=Command::new("xdg-open").arg(clean).spawn();
+  result.map(|_|()).map_err(|error|format!("EXTERNAL_URL_OPEN_FAILED: {error}"))
+}
 #[tauri::command]
 fn start_scan_session(app:AppHandle,state:State<DesktopState>,mut session:ScanSession)->Result<ScanSession,String>{
   let config=read_config(&app);
@@ -213,7 +248,7 @@ fn select_scan_file(app:AppHandle,state:State<DesktopState>,session_id:String,fi
 fn safe_pdf_filename(value:&str)->String{let stem=value.trim().trim_end_matches(".pdf").chars().map(|ch|if ch<' '||r#"<>:"/\|?*"#.contains(ch){' '}else{ch}).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");let stem=stem.trim_end_matches(['.',' ']);let safe=if stem.is_empty(){"DOCUMENTO - REVISAR"}else{stem};format!("{}.pdf",safe.chars().take(175).collect::<String>())}
 #[tauri::command] fn apply_processed_filename(app:AppHandle,session_id:String,proposed_filename:String)->Result<String,String>{if session_id.trim().is_empty(){return Err("SCAN_SESSION_REQUIRED".into())}let session_file=session_path(&app,&session_id)?;let mut session:ScanSession=serde_json::from_slice(&fs::read(&session_file).map_err(|_|"SCAN_SESSION_NOT_FOUND".to_string())?).map_err(|e|e.to_string())?;let source=PathBuf::from(session.clean_pdf_path.clone().ok_or("CLEAN_PDF_NOT_FOUND")?);let base=fs::canonicalize(scan_dir(&app,&session_id)?).map_err(|e|e.to_string())?;let canonical=fs::canonicalize(&source).map_err(|_|"CLEAN_PDF_NOT_FOUND".to_string())?;if !canonical.starts_with(&base){return Err("CLEAN_PDF_OUTSIDE_TEMP_DIRECTORY".into())}page_count(&canonical)?;let desired=safe_pdf_filename(&proposed_filename);let mut target=base.join(&desired);let mut correlation=2;while target.exists()&&target!=canonical{let stem=desired.trim_end_matches(".pdf");target=base.join(format!("{stem} ({correlation}).pdf"));correlation+=1}if target!=canonical{fs::rename(&canonical,&target).map_err(|e|format!("CLEAN_PDF_RENAME_FAILED: {e}"))?}page_count(&target)?;let final_name=target.file_name().unwrap_or_default().to_string_lossy().to_string();session.clean_pdf_path=Some(target.to_string_lossy().to_string());session.clean_pdf_filename=Some(final_name.clone());save_session(&app,&session)?;Ok(final_name)}
 #[cfg_attr(mobile,tauri::mobile_entry_point)]
-pub fn run(){tauri::Builder::default().manage(DesktopState::default()).plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![get_czur_configuration,reset_czur_configuration,validate_czur_configuration,detect_czur_scanner,detect_czur_export_folder,configure_czur_executable,configure_czur_export_folder,test_czur_export_folder,open_czur_scanner,start_scan_session,select_scan_file,select_manual_scan_file,read_scan_asset,read_scan_original,get_scan_session,store_clean_pdf,read_clean_pdf,apply_processed_filename,update_scan_pages,rotate_scan_page,adjust_scan_page_corners,use_original_scan_page,redetect_scan_page,generate_clean_pdf,cancel_scan_session,complete_scan_acquisition,recover_scan_sessions,list_scan_sessions,resume_scan_queue,retry_scan_session]).run(tauri::generate_context!()).expect("error al iniciar SIGADN Desktop")}
+pub fn run(){tauri::Builder::default().plugin(tauri_plugin_http::init()).manage(DesktopState::default()).plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![get_server_url,get_czur_configuration,reset_czur_configuration,validate_czur_configuration,detect_czur_scanner,detect_czur_export_folder,configure_czur_executable,configure_czur_export_folder,test_czur_export_folder,open_czur_scanner,open_external_url,start_scan_session,select_scan_file,select_manual_scan_file,read_scan_asset,read_scan_original,get_scan_session,store_clean_pdf,read_clean_pdf,apply_processed_filename,update_scan_pages,rotate_scan_page,adjust_scan_page_corners,use_original_scan_page,redetect_scan_page,generate_clean_pdf,cancel_scan_session,complete_scan_acquisition,recover_scan_sessions,list_scan_sessions,resume_scan_queue,retry_scan_session]).run(tauri::generate_context!()).expect("error al iniciar SIGADN Desktop")}
 
 #[cfg(test)]
 mod tests{

@@ -1,4 +1,4 @@
-﻿/* El historial de consultas no forma parte de la experiencia visible de SIGADN. */
+/* El historial de consultas no forma parte de la experiencia visible de Bóveda. */
 .assistantLayout{grid-template-columns:minmax(0,1fr);max-width:1120px}
 .assistantHistory{display:none}
 .assistantMain{width:100%}
@@ -21,4 +21,3 @@
 @media (max-width:900px){
   .assistantConversation{padding-left:20px;padding-right:20px}
 }
-

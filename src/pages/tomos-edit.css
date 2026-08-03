@@ -1,0 +1,17 @@
+.tomeTreeNode.tome,.tomeTreeNode.category{position:relative}
+.tomeEditButton{position:absolute;top:14px;right:18px;width:28px;height:28px;border:0;border-radius:7px;background:transparent;color:#7c796f;display:grid;place-items:center;opacity:0;cursor:pointer;transition:opacity .15s,background .15s,color .15s}
+.tomeTreeNode.tome:hover>.tomeEditButton,.tomeTreeNode.category:hover>.tomeEditButton,.tomeEditButton:focus-visible{opacity:1}
+.tomeTreeNode.category>.tomeEditButton{top:10px}
+.tomeEditButton:hover{background:var(--champagne);color:var(--gold)}
+.tomeEditButton svg{width:13px;height:13px}
+.tomeModalBackdrop{position:fixed;inset:0;background:rgba(29,29,29,.32);z-index:80;display:grid;place-items:center;padding:20px}
+.tomeEditModal{width:min(430px,calc(100vw - 32px));padding:22px}
+.tomeEditModal header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.tomeEditModal header h2{font-size:15px}
+.tomeEditModal header button{border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
+.tomeEditModal header svg{width:16px}
+.tomeEditModal>label{display:flex;flex-direction:column;gap:6px;margin-top:12px;font-size:9px;font-weight:700;color:var(--title)}
+.tomeEditModal .field{width:100%}
+.tomeEditModal input[readonly]{background:var(--ivory);color:var(--muted)}
+.tomeEditError{margin-top:12px;color:var(--danger);font-size:9px}
+.tomeEditModal footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
