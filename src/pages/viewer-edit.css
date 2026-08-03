@@ -1,0 +1,18 @@
+.metadataHeading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.metadataHeading h3{margin:0}
+.metadataHeading button{border:1px solid var(--border);border-radius:14px;background:#fff;padding:5px 9px;display:flex;align-items:center;gap:5px;font-size:10px;color:#66552b;cursor:pointer}
+.metadataHeading button:hover{background:#fbf4df}
+.metadataHeading svg{width:12px;height:12px}
+.metadataEditForm{display:flex;flex-direction:column;gap:10px;margin:18px 0}
+.metadataEditForm label{display:flex;flex-direction:column;gap:5px;font-size:9px;color:#777}
+.metadataEditForm input,.metadataEditForm textarea{width:100%;box-sizing:border-box;border:1px solid #d9cfb5;border-radius:7px;background:#fff;padding:8px;font:inherit;font-size:11px;color:var(--title);resize:vertical}
+.metadataEditForm input:focus,.metadataEditForm textarea:focus{outline:2px solid #e7d08a;border-color:var(--gold)}
+.metadataEditActions{display:flex;gap:7px;position:sticky;bottom:-16px;background:#fff;padding:10px 0 16px}
+.metadataEditActions .btn{flex:1;font-size:10px;padding:8px 6px}
+.metadataEditActions svg{width:12px}
+.metadataError,.metadataSuccess{font-size:10px;line-height:1.4;padding:8px;border-radius:7px}
+.metadataError{color:#9f2e28;background:#fff1ef}
+.metadataSuccess{color:#236e43;background:#edf8f1;margin:12px 0 0}
+.metadataQrLink{display:inline-block;max-width:100%;color:#806318;font-weight:700;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.metadataQrLink:hover{color:#b08316}
+.metadataQrError{display:block;margin-top:5px;color:#9f2e28;font-size:8px;line-height:1.35}

@@ -1,1 +1,1 @@
-{"compilerOptions":{"composite":true,"skipLibCheck":true,"module":"ESNext","moduleResolution":"Bundler"},"include":["vite.config.ts","server/**/*.ts","server/**/*.d.ts","src/data/permissions.ts","src/data/roles.ts"]}
+{"compilerOptions":{"composite":true,"skipLibCheck":true,"module":"ESNext","moduleResolution":"Bundler","rootDir":".","outDir":".tsbuild/node"},"include":["vite.config.ts"]}

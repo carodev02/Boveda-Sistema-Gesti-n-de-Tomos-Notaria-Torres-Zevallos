@@ -2,7 +2,7 @@ import {Role} from '@prisma/client';
 import {z} from 'zod';
 
 export const loginSchema=z.object({email:z.email(),password:z.string().min(8).max(200)});
-const passwordPolicy=z.string().min(8).max(200).regex(/[A-Z]/,'Debe contener una letra mayúscula.').regex(/[a-z]/,'Debe contener una letra minúscula.').regex(/\d/,'Debe contener un número.');
+const passwordPolicy=z.string().min(8).max(200).regex(/[A-Z]/,'Debe contener una letra mayúscula.').regex(/[a-z]/,'Debe contener una letra minúscula.').regex(/\d/,'Debe contener un número.').regex(/[^A-Za-z0-9]/,'Debe contener un carácter especial.');
 export const changePasswordSchema=z.object({currentPassword:z.string().min(1),newPassword:passwordPolicy});
 export const publicRegisterSchema=z.object({
   fullName:z.string().trim().min(2).max(160),

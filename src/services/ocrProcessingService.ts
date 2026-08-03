@@ -1,11 +1,12 @@
 import {apiRequest} from './apiClient';
 import type {ReviewValues} from '../domain/document-domain';
 export type OcrJobStartResponse={jobId:string;status:string};
-export type OcrJobStatus={jobId:string;status:string;currentStage?:string;totalPages?:number;processedPages?:number;progress?:number;errorCode?:string;error?:string|null};
+export type OcrJobStatus={jobId:string;status:string;currentStage?:string;totalPages?:number;processedPages?:number;progress?:number;elapsedSeconds?:number;estimatedSecondsRemaining?:number;failedPages?:number;errorCode?:string;error?:string|null};
 export type OcrField={fieldName:string;normalizedValue?:string;extractedValue?:string;confidence?:number;requiresReview?:boolean;pageNumber?:number;sourceText?:string};
 export type OcrJobResults={documentClass?:string;documentLocation?:Record<string,unknown>;location?:Record<string,unknown>;pages:unknown[];fields:OcrField[];confirmedFields?:OcrField[];reviewFields?:OcrField[];reviewCount:number};
-const aliases:Record<keyof Pick<ReviewValues,'kardexNumber'|'destinationRegistryTypeId'|'destinationInstrumentNumber'|'minuteNumber'|'printedFolio'|'documentDate'|'legalActId'|'primaryContractor'|'instrumentType'|'instrumentNumber'>,string[]>={
+const aliases:Record<keyof Pick<ReviewValues,'kardexNumber'|'destinationRegistryTypeId'|'destinationInstrumentNumber'|'minuteNumber'|'printedFolio'|'documentDate'|'legalActId'|'primaryContractor'|'instrumentType'|'instrumentNumber'|'qrUrl'>,string[]>={
   kardexNumber:['kardexNumber','kardex','kardex_number'],destinationRegistryTypeId:['destinationRegistryType','destinationRegistryTypeId','registryType'],destinationInstrumentNumber:['destinationInstrumentNumber','instrumentNumber'],minuteNumber:['minuteNumber','minuta','minute'],printedFolio:['printedFolio','folio','foja'],documentDate:['documentDate','date','fecha'],legalActId:['legalAct','legalActId','actoJuridico'],primaryContractor:['primaryContractor','contractor','contratante'],instrumentType:['instrumentType','destinationInstrumentType'],instrumentNumber:['instrumentNumber','destinationInstrumentNumber'],
+  qrUrl:['qrUrl','qr_url'],
 };
 export const normalizeExtractedFieldName=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toLowerCase();
 export const normalizeOcrFieldName=normalizeExtractedFieldName;

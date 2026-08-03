@@ -1,25 +1,31 @@
-# Backend SIGADN — primera etapa
+# API central de SIGADN
 
-Este servicio sustituye la autenticación simulada y los JSON de usuarios, perfil y auditoría. Los documentos, PDF, tomos y OCR continúan en IndexedDB durante esta etapa.
+Servicio Express con PostgreSQL, Prisma, autenticación, auditoría, documentos, tomos, reportes y procesamiento OCR.
 
-## Puesta en marcha
+## Desarrollo local
 
-1. Copiar `.env.example` como `.env` y cambiar `JWT_SECRET` y `SEED_ADMIN_PASSWORD`.
-2. Desde la raíz ejecutar `docker compose up -d postgres`.
-3. En `backend/`, ejecutar `npm install`, `npm run prisma:generate`, `npm run prisma:deploy` y `npm run seed`.
-4. Ejecutar `npm run dev` en `backend/` y `npm run dev` en la raíz.
-5. Abrir `http://localhost:5173`. Vite reenvía `/api` a Express en el puerto 4000.
+1. Copiar `.env.example` como `.env` y reemplazar todos los secretos de ejemplo.
+2. Desde la raíz, iniciar PostgreSQL con `docker compose up -d postgres`.
+3. En esta carpeta, ejecutar:
 
-La sesión se entrega en una cookie `HttpOnly`. PostgreSQL conserva únicamente el hash del token y permite revocar sesiones individualmente. El rol nunca se obtiene de `localStorage` ni de cabeceras enviadas por el navegador.
+```powershell
+npm install
+npm run prisma:generate
+npm run prisma:deploy
+npm run seed
+npm run dev
+```
 
-## Importar el JSON anterior
-
-Con PostgreSQL activo, ejecutar `npm run import:users`. El script lee `server/data/users.json`, evita duplicados, genera contraseñas temporales con bcrypt y escribe un informe local en `backend/import-reports/`. Esa carpeta está ignorada por Git y debe tratarse como confidencial. El JSON original no se elimina.
+El API queda disponible en `http://localhost:4000/api`.
 
 ## Verificación
 
-- `npm run build`
-- `npm run lint`
-- `npm test`
+```powershell
+npm run lint
+npm run build
+npm test
+```
 
-Las pruebas que requieren persistencia real deben ejecutarse contra una base de datos de pruebas separada antes del despliegue. Nunca usar la base productiva para pruebas destructivas.
+Use una base separada para pruebas que modifiquen información. Los archivos `.env`, informes de importación y el almacenamiento documental están excluidos de Git.
+
+Para instalar el sistema completo con Docker, restaurar datos o configurar una estación, consulte el [README principal](../README.md).

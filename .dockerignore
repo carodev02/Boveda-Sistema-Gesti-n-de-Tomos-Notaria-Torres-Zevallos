@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/*.log
+.git
+.agents
+.codex
+tmp
+outputs
+ENTREGA-OTRA-PC
+src-tauri/target
+src-tauri/vision/runtime
+src-tauri/vision/.venv
+backend/storage
+backend/.env
+servidor-docker.env

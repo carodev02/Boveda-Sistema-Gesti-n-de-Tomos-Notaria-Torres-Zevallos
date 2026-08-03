@@ -1,0 +1,10 @@
+import {readFileSync} from 'node:fs';
+import {describe,expect,it} from 'vitest';
+describe('reportes con datos centrales',()=>{
+ it('protege el endpoint con sesión autenticada',()=>{const routes=readFileSync(new URL('../src/routes/reports.routes.ts',import.meta.url),'utf8');expect(routes).toContain('reportsRouter.use(authenticate)')});
+ it('permite reportes a los cuatro roles autenticados y protege también la ruta visual',()=>{const permissions=readFileSync(new URL('../../src/data/permissions.ts',import.meta.url),'utf8');const app=readFileSync(new URL('../../src/App.tsx',import.meta.url),'utf8');for(const role of ['Administrador','Notario','Secretaria','Archivador'])expect(permissions).toMatch(new RegExp(`${role}[^\\n]*reports\\.view`));expect(app).toContain('permission="reports.view"')});
+ it('consulta PostgreSQL excluyendo eliminados, no confirmados y OCR fallido',()=>{const controller=readFileSync(new URL('../src/controllers/reports.controller.ts',import.meta.url),'utf8');expect(controller).toContain('prisma.document.findMany');expect(controller).toContain('deletedAt:null');expect(controller).toContain("documentStatus:status");expect(controller).toContain("notIn:['FAILED','ERROR','FALLIDO']")});
+ it('aplica filtros de período, tomo, tipo y estado en backend',()=>{const controller=readFileSync(new URL('../src/controllers/reports.controller.ts',import.meta.url),'utf8');for(const filter of ['req.query.period','req.query.tome','req.query.type','req.query.status'])expect(controller).toContain(filter)});
+ it('calcula los conteos y bytes sobre las mismas filas filtradas',()=>{const controller=readFileSync(new URL('../src/controllers/reports.controller.ts',import.meta.url),'utf8');expect(controller).toContain('total:documents.length');expect(controller).toContain('documents.reduce((sum,row)=>sum+row.fileSize,0)')});
+ it('exporta CSV y usa fecha real de registro para los meses',()=>{const page=readFileSync(new URL('../../src/pages/Reportes.tsx',import.meta.url),'utf8');expect(page).toContain('new Date(doc.createdAt).getMonth()');expect(page).toContain("text/csv;charset=utf-8");expect(page).not.toContain('doc.fecha.split')});
+});

@@ -13,7 +13,6 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "import:users": "tsx prisma/import-users.ts",
     "repair:mojibake": "tsx prisma/repair-mojibake.ts"
   },
   "dependencies": {

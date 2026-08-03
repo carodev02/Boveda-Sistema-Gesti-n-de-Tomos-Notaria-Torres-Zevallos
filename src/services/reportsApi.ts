@@ -1,0 +1,4 @@
+import {apiRequest} from './apiClient';
+export type ReportDocument={id:string;displayName:string;documentMode:string;documentType:string;year?:number|null;biennium?:string|null;bienniumStart?:number|null;bienniumEnd?:number|null;tomo:string;printedFolio?:number|null;fojaInitial?:number|null;minuta?:string|null;actoJuridico?:string|null;kardex?:string|null;escritura?:string|null;observations?:string|null;documentStatus:string;ocrStatus:string;fileSize:number;createdAt:string;contractors:Array<{name:string}>};
+export type ReportResponse={documents:ReportDocument[];options:{periods:string[];tomes:string[];types:string[]};total:number;totalBytes:number};
+export function getDocumentReport(filters:{period:string;tome:string;type:string;status:string}){const query=new URLSearchParams(Object.entries(filters).filter(([,value])=>Boolean(value)));return apiRequest<ReportResponse>(`/reports/documents?${query}`)}

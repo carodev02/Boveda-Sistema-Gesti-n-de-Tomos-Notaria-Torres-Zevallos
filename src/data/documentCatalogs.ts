@@ -14,7 +14,7 @@ export const registryTypes:RegistryType[]=[
   {id:'escrituras-publicas',name:'Escrituras públicas',active:true,tomeRequired:true},
   {id:'poderes',name:'Poderes',active:true,tomeRequired:true},
   {id:'testamentos',name:'Testamentos',active:true,tomeRequired:true},
-  {id:'actas',name:'Actas',active:true,tomeRequired:true},
+  {id:'actas',name:'Acta Vehicular',active:true,tomeRequired:true},
   {id:'otros-registros',name:'Otros registros notariales',active:true,tomeRequired:false},
 ];
 

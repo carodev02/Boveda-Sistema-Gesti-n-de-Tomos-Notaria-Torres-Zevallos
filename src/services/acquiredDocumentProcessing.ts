@@ -18,7 +18,7 @@ export async function processAcquiredDocument(input:{sessionId?:string;sourceTyp
   try{job=input.state.ocrJobId
     ? {jobId:input.state.ocrJobId,status:input.state.ocrStatus??'OCR_PENDING'}
     : await ocrProcessingService.start(upload.uploadId,input.signal)}
-  catch(error){throw new Error(`OCR_START_FAILED: ${error instanceof Error?error.message:'No se pudo iniciar el OCR.'}`)}
+  catch(error){throw new Error(`OCR_START_FAILED: ${error instanceof Error?error.message:'No se pudo iniciar el OCR.'}`,{cause:error})}
   trace(`[OCR] jobId: ${job.jobId.slice(0,8)}`);
   return {upload,job};
 }

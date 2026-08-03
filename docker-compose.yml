@@ -1,21 +1,54 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: sigadn-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: sigadn
-      POSTGRES_USER: sigadn
-      POSTGRES_PASSWORD: sigadn_dev
+      POSTGRES_DB: ${POSTGRES_DB:-sigadn}
+      POSTGRES_USER: ${POSTGRES_USER:-sigadn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in servidor-docker.env}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - sigadn_postgres_data:/var/lib/postgresql/data
+      - sigadn_postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sigadn -d sigadn"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: sigadn-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sigadn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sigadn}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET in servidor-docker.env}
+      FRONTEND_URL: http://tauri.localhost
+      PASSWORD_RESET_TEMP_EXPIRATION: 24
+      SESSION_EXPIRATION_HOURS: 12
+      MAX_FAILED_LOGIN_ATTEMPTS: 5
+      COOKIE_SECURE: "false"
+      STORAGE_ROOT: /app/backend/storage
+      VISION_ROOT: /app/vision
+      PYTHON_EXECUTABLE: /opt/vision-venv/bin/python
+      TESSERACT_EXECUTABLE: /usr/bin/tesseract
+      OCR_JOB_WORKERS: 2
+      OCR_PAGE_WORKERS: 2
+      OCR_DIGITAL_TEXT_MIN: 80
+    ports:
+      - "0.0.0.0:4000:4000"
+    volumes:
+      - ./backend/storage:/app/backend/storage
 
 volumes:
   sigadn_postgres_data:
+    name: sigadn_postgres_data
