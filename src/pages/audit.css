@@ -2,3 +2,4 @@
 @media(max-width:1100px){.auditTable .colRole{display:none}.auditTable th:nth-child(4),.auditTable td:nth-child(4){display:none}}
 @media(max-width:700px){.auditPage{padding:10px}.auditFilters>*{max-width:100%}.auditSummary{flex-wrap:wrap}.auditPagination{justify-content:center;flex-wrap:wrap;padding:8px}.auditDetailModal{width:100%;border-radius:0}}
 
+.auditPage .auditTableViewport{overflow-x:auto;overflow-y:visible;max-height:none}

@@ -21,6 +21,8 @@ backend/storage/
 backend/logs/
 backend/import-reports/
 ENTREGA-OTRA-PC/
+actualizacion/
+ENTREGA-PDF-GRANDES-*/
 migracion/
 *.dump
 *.backup

@@ -3,6 +3,7 @@ use notify::{EventKind,RecommendedWatcher,RecursiveMode,Watcher};
 use serde::{Deserialize,Serialize};
 use sha2::{Digest,Sha256};
 use std::{collections::{HashMap,HashSet},fs,path::{Path,PathBuf},process::Command,sync::{Arc,Mutex},thread,time::{Duration,SystemTime}};
+use std::io::{Read,Seek,SeekFrom};
 use tauri::{AppHandle,Emitter,Manager,State,UserAttentionType};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
@@ -245,10 +246,27 @@ fn select_scan_file(app:AppHandle,state:State<DesktopState>,session_id:String,fi
 #[tauri::command] fn retry_scan_session(app:AppHandle,state:State<DesktopState>,session_id:String)->Result<(),String>{let mut item=read_inbox(&app,&session_id)?;let source=if scan_dir(&app,&session_id)?.join("original.pdf").is_file(){item.delete_source=false;scan_dir(&app,&session_id)?.join("original.pdf")}else{read_config(&app).export_folder.ok_or("La bandeja CZUR no está configurada.")?.join(&item.source_filename)};if !source.is_file(){return Err("El PDF original ya no está disponible para reintentar.".into())}item.status="DETECTED".into();item.error=None;save_inbox(&app,&item)?;let file_id=Uuid::new_v4().to_string();state.detected.lock().map_err(|_|"No se pudo reintentar.")?.insert(file_id.clone(),source);let file=DetectedScanFile{id:file_id,display_name:item.source_filename,size:item.source_size,page_count:item.page_count,detected_at:Utc::now().to_rfc3339(),kind:"PDF".into()};let _=app.emit("scan-session-status",ScanStatusEvent{session_id,status:"SCAN_DETECTED".into(),message:"Reintento agregado a la cola.".into(),file:Some(file)});Ok(())}
 
 #[tauri::command] fn read_clean_pdf(app:AppHandle,session_id:String)->Result<Vec<u8>,String>{let session:ScanSession=serde_json::from_slice(&fs::read(session_path(&app,&session_id)?).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;let path=session.clean_pdf_path.ok_or("CLEAN_PDF_NOT_FOUND")?;let canonical=fs::canonicalize(&path).map_err(|_|"CLEAN_PDF_NOT_FOUND".to_string())?;let base=fs::canonicalize(scan_dir(&app,&session_id)?).map_err(|e|e.to_string())?;if !canonical.starts_with(&base){return Err("CLEAN_PDF_OUTSIDE_TEMP_DIRECTORY".into())}fs::read(canonical).map_err(|e|e.to_string())}
+#[derive(Serialize)]
+struct PdfChunk{size:u64,bytes:Vec<u8>}
+#[tauri::command] fn read_clean_pdf_chunk(app:AppHandle,session_id:String,offset:u64,length:usize)->Result<PdfChunk,String>{
+  if length==0||length>2*1024*1024{return Err("PDF_CHUNK_SIZE_INVALID".into())}
+  let session:ScanSession=serde_json::from_slice(&fs::read(session_path(&app,&session_id)?).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+  let path=session.clean_pdf_path.ok_or("CLEAN_PDF_NOT_FOUND")?;
+  let canonical=fs::canonicalize(&path).map_err(|_|"CLEAN_PDF_NOT_FOUND".to_string())?;
+  let base=fs::canonicalize(scan_dir(&app,&session_id)?).map_err(|e|e.to_string())?;
+  if !canonical.starts_with(&base){return Err("CLEAN_PDF_OUTSIDE_TEMP_DIRECTORY".into())}
+  let mut file=fs::File::open(canonical).map_err(|e|e.to_string())?;
+  let size=file.metadata().map_err(|e|e.to_string())?.len();
+  if offset>=size{return Err("PDF_CHUNK_OFFSET_INVALID".into())}
+  file.seek(SeekFrom::Start(offset)).map_err(|e|e.to_string())?;
+  let mut bytes=vec![0;length.min((size-offset) as usize)];
+  file.read_exact(&mut bytes).map_err(|e|e.to_string())?;
+  Ok(PdfChunk{size,bytes})
+}
 fn safe_pdf_filename(value:&str)->String{let stem=value.trim().trim_end_matches(".pdf").chars().map(|ch|if ch<' '||r#"<>:"/\|?*"#.contains(ch){' '}else{ch}).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");let stem=stem.trim_end_matches(['.',' ']);let safe=if stem.is_empty(){"DOCUMENTO - REVISAR"}else{stem};format!("{}.pdf",safe.chars().take(175).collect::<String>())}
 #[tauri::command] fn apply_processed_filename(app:AppHandle,session_id:String,proposed_filename:String)->Result<String,String>{if session_id.trim().is_empty(){return Err("SCAN_SESSION_REQUIRED".into())}let session_file=session_path(&app,&session_id)?;let mut session:ScanSession=serde_json::from_slice(&fs::read(&session_file).map_err(|_|"SCAN_SESSION_NOT_FOUND".to_string())?).map_err(|e|e.to_string())?;let source=PathBuf::from(session.clean_pdf_path.clone().ok_or("CLEAN_PDF_NOT_FOUND")?);let base=fs::canonicalize(scan_dir(&app,&session_id)?).map_err(|e|e.to_string())?;let canonical=fs::canonicalize(&source).map_err(|_|"CLEAN_PDF_NOT_FOUND".to_string())?;if !canonical.starts_with(&base){return Err("CLEAN_PDF_OUTSIDE_TEMP_DIRECTORY".into())}page_count(&canonical)?;let desired=safe_pdf_filename(&proposed_filename);let mut target=base.join(&desired);let mut correlation=2;while target.exists()&&target!=canonical{let stem=desired.trim_end_matches(".pdf");target=base.join(format!("{stem} ({correlation}).pdf"));correlation+=1}if target!=canonical{fs::rename(&canonical,&target).map_err(|e|format!("CLEAN_PDF_RENAME_FAILED: {e}"))?}page_count(&target)?;let final_name=target.file_name().unwrap_or_default().to_string_lossy().to_string();session.clean_pdf_path=Some(target.to_string_lossy().to_string());session.clean_pdf_filename=Some(final_name.clone());save_session(&app,&session)?;Ok(final_name)}
 #[cfg_attr(mobile,tauri::mobile_entry_point)]
-pub fn run(){tauri::Builder::default().plugin(tauri_plugin_http::init()).manage(DesktopState::default()).plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![get_server_url,get_czur_configuration,reset_czur_configuration,validate_czur_configuration,detect_czur_scanner,detect_czur_export_folder,configure_czur_executable,configure_czur_export_folder,test_czur_export_folder,open_czur_scanner,open_external_url,start_scan_session,select_scan_file,select_manual_scan_file,read_scan_asset,read_scan_original,get_scan_session,store_clean_pdf,read_clean_pdf,apply_processed_filename,update_scan_pages,rotate_scan_page,adjust_scan_page_corners,use_original_scan_page,redetect_scan_page,generate_clean_pdf,cancel_scan_session,complete_scan_acquisition,recover_scan_sessions,list_scan_sessions,resume_scan_queue,retry_scan_session]).run(tauri::generate_context!()).expect("error al iniciar SIGADN Desktop")}
+pub fn run(){tauri::Builder::default().plugin(tauri_plugin_http::init()).manage(DesktopState::default()).plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![get_server_url,get_czur_configuration,reset_czur_configuration,validate_czur_configuration,detect_czur_scanner,detect_czur_export_folder,configure_czur_executable,configure_czur_export_folder,test_czur_export_folder,open_czur_scanner,open_external_url,start_scan_session,select_scan_file,select_manual_scan_file,read_scan_asset,read_scan_original,get_scan_session,store_clean_pdf,read_clean_pdf,read_clean_pdf_chunk,apply_processed_filename,update_scan_pages,rotate_scan_page,adjust_scan_page_corners,use_original_scan_page,redetect_scan_page,generate_clean_pdf,cancel_scan_session,complete_scan_acquisition,recover_scan_sessions,list_scan_sessions,resume_scan_queue,retry_scan_session]).run(tauri::generate_context!()).expect("error al iniciar SIGADN Desktop")}
 
 #[cfg(test)]
 mod tests{

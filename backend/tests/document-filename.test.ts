@@ -10,6 +10,7 @@ describe('nombre propuesto del PDF CZUR',()=>{
     expect(generateNormalizedFilename({contractor:'María Pérez',kardexNumber:'468',documentClass:'REGISTRO_NOTARIAL',instrumentNumber:'119'})).toBe('María Pérez - KARDEX 468 - ESCRITURA 119.pdf');
   });
   it('marca para revisión cuando no detecta kardex',()=>expect(generateNormalizedFilename({documentClass:'MINUTA'})).toBe('DOCUMENTO - REVISAR.pdf'));
+  it('genera un nombre de Solicitud sin etiquetarla como escritura',()=>expect(generateNormalizedFilename({contractor:'María Pérez',kardexNumber:'468',documentClass:'SOLICITUD'})).toBe('María Pérez - KARDEX 468.pdf'));
   it('limpia nombres editados, conserva PDF y evita reservados',()=>expect(normalizePdfFilename('CON<>:"/\\|?*.txt')).toBe('DOCUMENTO - CON .txt.pdf'));
   it('agrega un correlativo controlado y limita la longitud',()=>{
     const first=generateNormalizedFilename({kardexNumber:'468',documentClass:'MINUTA'});

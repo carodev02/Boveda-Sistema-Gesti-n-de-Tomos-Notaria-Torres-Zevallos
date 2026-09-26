@@ -16,3 +16,6 @@
 .metadataQrLink{display:inline-block;max-width:100%;color:#806318;font-weight:700;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
 .metadataQrLink:hover{color:#b08316}
 .metadataQrError{display:block;margin-top:5px;color:#9f2e28;font-size:8px;line-height:1.35}
+.viewingRequest .metadataEditForm>label:nth-of-type(2),.viewingRequest .metadata>dl>dt:nth-of-type(2),.viewingRequest .metadata>dl>dd:nth-of-type(2){display:none}
+.viewingReadOnlyDocument .metadataHeading>button{display:none}
+.viewerTools .replacePdfButton{border-radius:16px;border-color:var(--border);margin-left:8px;padding:0 13px;white-space:nowrap;color:#7b631f;background:#fffaf0;font-weight:600}.viewerTools .replacePdfButton:hover{border-color:var(--gold);background:var(--champagne)}.viewerTools .replacePdfButton:disabled{opacity:.55}

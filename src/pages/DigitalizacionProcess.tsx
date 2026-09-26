@@ -103,7 +103,7 @@ export function DigitalizacionProcess() {
     folioRange &&
     periodValid &&
     tomeValid &&
-    (config.documentClass === "MINUTA" || config.registryTypeId),
+    (config.documentClass !== "REGISTRO_NOTARIAL" || config.registryTypeId),
   );
   const normalizedName = useMemo(
     () =>
@@ -153,9 +153,7 @@ export function DigitalizacionProcess() {
     void (async () => {
       try {
         scanWorkflowStore.setProcessingProgress({ status: "UPLOADING", currentStage: "PREPARING" });
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 30000);
-        const acquired = await processAcquiredDocument({sessionId:initial.sessionId,sourceType:initial.sessionId?'CZUR':'MANUAL',state:initial,signal:controller.signal,metadata:{documentClass:config.documentClass,registryTypeId:config.registryTypeId,tomeNumber:normalizedTome,folioRangeStart:folioRange?.start,folioRangeEnd:folioRange?.end,year:/^\d{4}$/.test(config.period)?Number(config.period):undefined,bienniumStart:config.period.includes('-')?Number(config.period.slice(0,4)):undefined,bienniumEnd:config.period.includes('-')?Number(config.period.slice(5)):undefined,file}}).finally(()=>clearTimeout(timer));
+        const acquired = await processAcquiredDocument({sessionId:initial.sessionId,sourceType:initial.sessionId?'CZUR':'MANUAL',state:initial,metadata:{documentClass:config.documentClass,registryTypeId:config.registryTypeId,tomeNumber:normalizedTome,folioRangeStart:folioRange?.start,folioRangeEnd:folioRange?.end,year:/^\d{4}$/.test(config.period)?Number(config.period):undefined,bienniumStart:config.period.includes('-')?Number(config.period.slice(0,4)):undefined,bienniumEnd:config.period.includes('-')?Number(config.period.slice(5)):undefined,pageCount:pages,file}});
         const {upload,job}=acquired;
         if (!initial.uploadId) scanWorkflowStore.setUploadResult({ ...upload, status: "COMPLETED" });
         processTrace(`Upload completado: ${shortId(upload.uploadId)}`);
@@ -309,16 +307,10 @@ export function DigitalizacionProcess() {
   async function applyProcessedName(){if(!file)return;setApplyingName(true);setMessage('');try{const safeName=normalizePdfFilename(proposedFileName,existingFileNames);const sessionId=scanWorkflowStore.get().sessionId;let finalName=safeName;if(sessionId){try{finalName=await czurDesktop.applyProcessedFilename(sessionId,safeName)}catch{await czurDesktop.storeCleanPdf(sessionId,new Uint8Array(await file.arrayBuffer()));finalName=await czurDesktop.applyProcessedFilename(sessionId,safeName)}}scanWorkflowStore.setProcessedFilename(finalName);setFile(current=>current?new File([current],finalName,{type:'application/pdf',lastModified:current.lastModified}):current);setProposedFileName(finalName);setAppliedFilename(finalName);setMessage(`Nombre aplicado correctamente: ${finalName}`);return finalName}catch{setMessage('No se pudo aplicar el nombre a la copia procesada.');return undefined}finally{setApplyingName(false)}}
   async function confirmDocument() {
     if (!file) return;
-    const required = [
-      review.kardexNumber,
-      review.minuteNumber,
-      review.printedFolio,
-      review.legalActId,
-      review.primaryContractor,
-    ];
-    if (config.documentClass === "REGISTRO_NOTARIAL")
-      required.push(review.instrumentType, review.instrumentNumber);
-    else required.push(review.destinationRegistryTypeId);
+    const required = [review.kardexNumber,review.printedFolio,review.primaryContractor];
+    if (config.documentClass === "REGISTRO_NOTARIAL")required.push(review.minuteNumber,review.legalActId,review.instrumentType,review.instrumentNumber);
+    if (config.documentClass === "MINUTA")required.push(review.minuteNumber,review.legalActId,review.destinationRegistryTypeId);
+    if (config.documentClass === "SOLICITUD")required.push(review.instrumentNumber,review.legalActId);
     if (required.some((value) => !String(value).trim())) {
       setMessage("Complete los campos obligatorios de la revisión mínima.");
       return;
@@ -345,7 +337,7 @@ export function DigitalizacionProcess() {
         tipo:
           config.documentClass === "REGISTRO_NOTARIAL"
             ? (registryType?.name ?? "Registro notarial")
-            : "Minuta",
+            : config.documentClass === "SOLICITUD" ? "Solicitud" : "Minuta",
         ano: end ? undefined : start,
         bienio: end ? config.period : undefined,
         bienniumStart: end ? start : undefined,
@@ -362,7 +354,7 @@ export function DigitalizacionProcess() {
         escritura:
           config.documentClass === "REGISTRO_NOTARIAL"
             ? review.instrumentNumber
-            : review.destinationInstrumentNumber,
+            : config.documentClass === "MINUTA" ? review.destinationInstrumentNumber : review.instrumentNumber,
         contratantes: review.primaryContractor.split(/\s*;\s*|\r?\n/).map(value=>value.trim()).filter(Boolean),
         observaciones: "",
         fecha: review.documentDate,
@@ -543,12 +535,13 @@ function Configuration({
                 ...value,
                 documentClass: event.target.value as DocumentClass,
                 registryTypeId:
-                  event.target.value === "MINUTA" ? "" : value.registryTypeId,
+                  event.target.value === "REGISTRO_NOTARIAL" ? value.registryTypeId : "",
               }))
             }
           >
             <option value="MINUTA">Minuta</option>
             <option value="REGISTRO_NOTARIAL">Registro notarial</option>
+            <option value="SOLICITUD">Solicitud</option>
           </select>
         </label>
         {config.documentClass === "REGISTRO_NOTARIAL" && (
@@ -733,7 +726,7 @@ function Review({
         <b>Ubicación documental</b>
         <dl>
           <div><dt>Clase documental</dt><dd>
-            {config.documentClass === "MINUTA" ? "Minuta" : "Registro notarial"}
+            {config.documentClass === "MINUTA" ? "Minuta" : config.documentClass === "SOLICITUD" ? "Solicitud" : "Registro notarial"}
           </dd></div>
           {config.documentClass === "REGISTRO_NOTARIAL" && (
             <div>
@@ -749,8 +742,10 @@ function Review({
       <div className="reviewGrid domainReviewGrid">
         {config.documentClass === "REGISTRO_NOTARIAL" ? (
           <RegistryFields values={values} update={update} reviewTargets={reviewTargets} ocrFields={ocrFields}/>
-        ) : (
+        ) : config.documentClass === "MINUTA" ? (
           <MinuteFields values={values} update={update} reviewTargets={reviewTargets} ocrFields={ocrFields}/>
+        ) : (
+          <RequestFields values={values} update={update} reviewTargets={reviewTargets} ocrFields={ocrFields}/>
         )}
       </div>
       <div className="normalizedNamePreview">
@@ -814,7 +809,7 @@ function RegistryFields({
         value={values.instrumentType}
         requiresReview={reviewTargets.has("instrumentType")}
         evidence={findOcrField(ocrFields,"instrumentType")}
-        placeholder="Escritura, Acta, Poder..."
+        placeholder="Escritura, Acta Vehicular, Poder..."
         onChange={(value) => update("instrumentType", value)}
       />
       <Field
@@ -842,6 +837,7 @@ function RegistryFields({
           label="URL de QR"
           type="url"
           value={values.qrUrl}
+          evidence={findOcrField(ocrFields,"qrUrl")}
           onChange={(value) => update("qrUrl", value)}
         />
       )}
@@ -860,6 +856,8 @@ function MinuteFields({
   reviewTargets:Set<keyof ReviewValues>;
   ocrFields:OcrField[];
 }) {
+  const qrRaw=ocrFields.find(field=>normalizeOcrFieldName(field.fieldName)==='qrrawvalue');
+  const qrRawValue=String(qrRaw?.normalizedValue||qrRaw?.extractedValue||'');
   return (
     <>
       <Field
@@ -931,8 +929,24 @@ function MinuteFields({
         evidence={findOcrField(ocrFields,"primaryContractor")}
         onChange={(value) => update("primaryContractor", value)}
       />
+      {values.qrUrl&&<Field label="URL de QR" type="url" value={values.qrUrl} evidence={findOcrField(ocrFields,"qrUrl")} onChange={value=>update("qrUrl",value)}/>}
+      {!values.qrUrl&&qrRawValue&&<div className="normalizedNamePreview"><b>Contenido QR — requiere revisión</b><span>{qrRawValue}</span><small>Página {qrRaw?.pageNumber??'no indicada'}. El contenido no es una URL HTTP/HTTPS válida.</small></div>}
     </>
   );
+}
+function RequestFields({values,update,reviewTargets,ocrFields}:{values:ReviewValues;update:(key:keyof ReviewValues,value:string)=>void;reviewTargets:Set<keyof ReviewValues>;ocrFields:OcrField[]}){
+  const qrRaw=ocrFields.find(field=>normalizeOcrFieldName(field.fieldName)==='qrrawvalue');
+  const qrRawValue=String(qrRaw?.normalizedValue||qrRaw?.extractedValue||'');
+  return <>
+    <Field label="Número de kardex *" value={values.kardexNumber} requiresReview={reviewTargets.has("kardexNumber")} evidence={findOcrField(ocrFields,"kardexNumber")} onChange={value=>update("kardexNumber",value)}/>
+    <Field label="Número de foja *" type="number" value={values.printedFolio} requiresReview={reviewTargets.has("printedFolio")} evidence={findOcrField(ocrFields,"printedFolio")} onChange={value=>update("printedFolio",value)}/>
+    <Field label="Fecha" type="date" value={values.documentDate} requiresReview={reviewTargets.has("documentDate")} evidence={findOcrField(ocrFields,"documentDate")} onChange={value=>update("documentDate",value)}/>
+    <Field label="Solicitante(s) *" value={values.primaryContractor} requiresReview={reviewTargets.has("primaryContractor")} evidence={findOcrField(ocrFields,"primaryContractor")} onChange={value=>update("primaryContractor",value)}/>
+    <Field label="Número de instrumento *" value={values.instrumentNumber} requiresReview={reviewTargets.has("instrumentNumber")} evidence={findOcrField(ocrFields,"instrumentNumber")} onChange={value=>update("instrumentNumber",value)}/>
+    <LegalActField value={values.legalActId} requiresReview={reviewTargets.has("legalActId")} evidence={findOcrField(ocrFields,"legalActId")} onChange={value=>update("legalActId",value)}/>
+    {values.qrUrl&&<Field label="URL de QR" type="url" value={values.qrUrl} evidence={findOcrField(ocrFields,"qrUrl")} onChange={value=>update("qrUrl",value)}/>}
+    {!values.qrUrl&&qrRawValue&&<div className="normalizedNamePreview"><b>Contenido QR — requiere revisión</b><span>{qrRawValue}</span><small>Página {qrRaw?.pageNumber??'no indicada'}. El contenido no es una URL HTTP/HTTPS válida.</small></div>}
+  </>;
 }
 function Field({
   label,

@@ -31,10 +31,15 @@ def ocr_log(message: str) -> None:
     print(f"[OCR] {message}", file=sys.stderr, flush=True)
 
 
-def progress_log(processed: int, total: int, started_at: float, failed: int = 0) -> None:
+def progress_log(processed: int, total: int, started_at: float, failed: int = 0,
+                 timed_processed: int | None = None, timed_total: int | None = None,
+                 timed_started_at: float | None = None) -> None:
     elapsed = max(0.001, time.perf_counter() - started_at)
-    remaining = max(0, total - processed)
-    estimate = round((elapsed / max(1, processed)) * remaining, 1)
+    measured_pages = processed if timed_processed is None else timed_processed
+    measured_total = total if timed_total is None else timed_total
+    measured_elapsed = max(0.001, time.perf_counter() - (timed_started_at or started_at))
+    remaining = max(0, measured_total - measured_pages)
+    estimate = round((measured_elapsed / measured_pages) * remaining, 1) if measured_pages else 0
     payload = {"processedPages": processed, "totalPages": total, "progress": round(processed / max(1, total) * 100), "elapsedSeconds": round(elapsed, 1), "estimatedSecondsRemaining": estimate, "failedPages": failed}
     print("PROGRESS " + json.dumps(payload), file=sys.stderr, flush=True)
 
@@ -54,6 +59,15 @@ def peak_memory_mb() -> float | None:
     if ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
         return round(counters.peak / 1024 / 1024, 2)
     return None
+
+
+def has_pdf_signature(source: Path) -> bool:
+    """Validate the header without loading a potentially very large PDF into RAM."""
+    try:
+        with source.open("rb") as handle:
+            return handle.read(4) == b"%PDF"
+    except OSError:
+        return False
 
 
 def valid_qr_url(value: str) -> str | None:
@@ -84,118 +98,71 @@ def _qr_points_in_original(points: np.ndarray, rotation: int, width: int, height
 
 
 def detect_qr_codes(image: np.ndarray, page_number: int) -> list[dict]:
-    """Decode QR with OpenCV's dedicated QR reader across robust image variants."""
+    """Decode QR at document resolution, including codes printed sideways."""
     detector = cv2.QRCodeDetector()
     height, width = image.shape[:2]
-    found: dict[str, dict] = {}
-    # Fast dedicated decode first. QRCodeDetector is rotation invariant for normal
-    # symbols, so most pages need only this single bounded pass.
-    try:
-        value, points, _ = detector.detectAndDecode(image)
-        if value.strip() and points is not None:
-            raw_value = value.strip()
-            original_points = points.reshape(-1, 2)
+    rotations = [
+        (0, image),
+        (90, cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)),
+        (180, cv2.rotate(image, cv2.ROTATE_180)),
+        (270, cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)),
+    ]
+
+    def decode(candidate: np.ndarray) -> list[tuple[str, np.ndarray]]:
+        decoded: list[tuple[str, np.ndarray]] = []
+        try:
+            ok, values, points, _ = detector.detectAndDecodeMulti(candidate)
+            if ok and points is not None:
+                decoded.extend((str(value).strip(), np.asarray(box)) for value, box in zip(values, points) if str(value).strip())
+        except (cv2.error, ValueError):
+            pass
+        if decoded:
+            return decoded
+        try:
+            value, points, _ = detector.detectAndDecode(candidate)
+            if str(value).strip() and points is not None:
+                decoded.append((str(value).strip(), np.asarray(points)))
+        except cv2.error:
+            pass
+        return decoded
+
+    variants: list[tuple[str, int, np.ndarray]] = [
+        ("color", rotation, candidate) for rotation, candidate in rotations
+    ]
+    variants.extend(
+        ("gray", rotation, cv2.cvtColor(candidate, cv2.COLOR_BGR2GRAY))
+        for rotation, candidate in rotations
+    )
+    for variant, rotation, candidate in variants:
+        decoded = decode(candidate)
+        if not decoded:
+            continue
+        detections = []
+        for raw_value, points in decoded:
+            original_points = _qr_points_in_original(points, rotation, width, height, 0, 0, 1)
             min_x, min_y = np.maximum(original_points.min(axis=0), 0)
             max_x, max_y = np.minimum(original_points.max(axis=0), (width - 1, height - 1))
             qr_url = valid_qr_url(raw_value)
-            result = {"qrDetected": True, "qrRawValue": raw_value, "qrUrl": qr_url, "pageNumber": page_number, "boundingBox": {"x": float(min_x), "y": float(min_y), "width": float(max_x - min_x), "height": float(max_y - min_y)}, "requiresReview": qr_url is None, "decoder": "opencv-qrcode", "variant": "original/full/rotation-0"}
-            if qr_url:
-                return [result]
-            found[raw_value] = result
-    except cv2.error:
-        pass
-    # A page may contain a decorative/non-web QR before the notarial verification
-    # QR. Decode all visible symbols and prefer the first validated web address.
+            detections.append({"qrDetected": True, "qrRawValue": raw_value, "qrUrl": qr_url, "pageNumber": page_number, "boundingBox": {"x": float(min_x), "y": float(min_y), "width": float(max_x - min_x), "height": float(max_y - min_y)}, "requiresReview": qr_url is None, "decoder": "opencv-qrcode", "variant": f"full/{variant}/rotation-{rotation}"})
+        return detections
+    return []
+
+
+def _detect_qr_pdf_page(source: Path, page_number: int) -> list[dict]:
+    """Render a text-bearing PDF page because it can still contain a QR image."""
+    document = fitz.open(source)
     try:
-        detected, values, point_sets, _ = detector.detectAndDecodeMulti(image)
-        if detected and point_sets is not None:
-            for value, points in zip(values, point_sets):
-                raw_value = str(value).strip()
-                if not raw_value:
-                    continue
-                original_points = np.asarray(points).reshape(-1, 2)
-                min_x, min_y = np.maximum(original_points.min(axis=0), 0)
-                max_x, max_y = np.minimum(original_points.max(axis=0), (width - 1, height - 1))
-                qr_url = valid_qr_url(raw_value)
-                result = {"qrDetected": True, "qrRawValue": raw_value, "qrUrl": qr_url, "pageNumber": page_number, "boundingBox": {"x": float(min_x), "y": float(min_y), "width": float(max_x - min_x), "height": float(max_y - min_y)}, "requiresReview": qr_url is None, "decoder": "opencv-qrcode-multi", "variant": "original/full/rotation-0"}
-                if qr_url:
-                    return [result]
-                found[raw_value] = result
-    except (cv2.error, AttributeError):
-        pass
-    # Avoid dozens of expensive decode attempts on ordinary text pages. Nested
-    # square contours are the three finder patterns characteristic of a QR.
-    gray_page = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, qr_mask = cv2.threshold(gray_page, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    _, hierarchy = cv2.findContours(qr_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    nested = 0
-    if hierarchy is not None:
-        for item in hierarchy[0]:
-            child, depth = int(item[2]), 0
-            while child >= 0 and depth < 4:
-                depth += 1
-                child = int(hierarchy[0][child][2])
-            if depth >= 3:
-                nested += 1
-    if nested < 2:
-        return list(found.values())
-    rotations = {
-        0: image,
-        90: cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
-        180: cv2.rotate(image, cv2.ROTATE_180),
-        270: cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE),
-    }
-    for rotation, rotated in rotations.items():
-        gray = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
-        contrast = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
-        binary = cv2.adaptiveThreshold(contrast, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 9)
-        rh, rw = rotated.shape[:2]
-        crops = []
-        # Enlarged overlapping regions recover small QR symbols from document corners.
-        for row in range(2):
-            for column in range(2):
-                x0 = int(column * rw * .42)
-                y0 = int(row * rh * .42)
-                x1 = min(rw, x0 + int(rw * .58))
-                y1 = min(rh, y0 + int(rh * .58))
-                crops.append((f"crop-{row}-{column}", x0, y0, x1, y1))
-        crops.append(("full", 0, 0, rw, rh))
-        variants = (("original", rotated), ("gray", gray), ("contrast", contrast), ("binary", binary))
-        for variant_name, variant in variants:
-            for crop_name, x0, y0, x1, y1 in crops:
-                crop = variant[y0:y1, x0:x1]
-                # Keep candidates bounded for predictable OCR latency while enlarging corner crops.
-                scale = min(2.5, 1800 / max(crop.shape[:2])) if crop_name != "full" else min(1.0, 1800 / max(crop.shape[:2]))
-                candidate = crop if scale == 1.0 else cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-                decoded: list[tuple[str, np.ndarray]] = []
-                try:
-                    value, points, _ = detector.detectAndDecode(candidate)
-                    if value.strip() and points is not None:
-                        decoded.append((value, points))
-                except cv2.error:
-                    pass
-                for raw_value, points in decoded:
-                    raw_value = raw_value.strip()
-                    if raw_value in found:
-                        continue
-                    original_points = _qr_points_in_original(points, rotation, width, height, x0, y0, scale)
-                    min_x, min_y = np.maximum(original_points.min(axis=0), 0)
-                    max_x, max_y = np.minimum(original_points.max(axis=0), (width - 1, height - 1))
-                    qr_url = valid_qr_url(raw_value)
-                    found[raw_value] = {
-                        "qrDetected": True,
-                        "qrRawValue": raw_value,
-                        "qrUrl": qr_url,
-                        "pageNumber": page_number,
-                        "boundingBox": {"x": float(min_x), "y": float(min_y), "width": float(max_x - min_x), "height": float(max_y - min_y)},
-                        "requiresReview": qr_url is None,
-                        "decoder": "opencv-qrcode",
-                        "variant": f"{variant_name}/{crop_name}/rotation-{rotation}",
-                    }
-                    # Notarial acts contain one validation QR per page. Continue with the next
-                    # page after the first reliable decode instead of repeating costly fallbacks.
-                    return list(found.values())
-    return list(found.values())
+        page = document.load_page(page_number - 1)
+        zoom = 2.8
+        longest = max(page.rect.width, page.rect.height) * zoom
+        if longest > 3000:
+            zoom *= 3000 / longest
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, pixmap.n)
+        image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR if pixmap.n == 4 else cv2.COLOR_RGB2BGR)
+        return detect_qr_codes(image, page_number)
+    finally:
+        document.close()
 
 
 def ordered_points(points: np.ndarray) -> np.ndarray:
@@ -280,17 +247,18 @@ def generate_clean_pdf(session: Path, pages: list[dict] | None = None) -> dict:
     selected = pages or sorted(processed.glob("page-*.png"))
     if isinstance(selected, list) and selected and isinstance(selected[0], dict):
         selected = [processed / f"page-{int(item['originalPageNumber']):04}.png" for item in selected if not item.get("excluded")]
-    images = [fitz.Pixmap(str(path)) for path in selected if Path(path).is_file()]
-    if not images:
+    selected = [Path(item) for item in selected if Path(item).is_file()]
+    if not selected:
         raise ValueError("No hay páginas procesadas para generar el PDF.")
     document = fitz.open()
-    for image in images:
+    for image_path in selected:
+        image = fitz.Pixmap(str(image_path))
         page = document.new_page(width=image.width, height=image.height)
         page.insert_image(page.rect, pixmap=image)
-        image = None
-    document.save(output)
+        del image
+    document.save(output, garbage=3, deflate=True)
     document.close()
-    return {"success": True, "cleanPdf": str(output), "pageCount": len(images)}
+    return {"success": True, "cleanPdf": str(output), "pageCount": len(selected)}
 
 
 def recognize(source: Path, session: Path) -> dict:
@@ -298,7 +266,7 @@ def recognize(source: Path, session: Path) -> dict:
     session.mkdir(parents=True, exist_ok=True)
     if not source.is_file():
         raise OcrFailure("TEMP_UPLOAD_NOT_FOUND", "No existe la carga temporal.")
-    if source.stat().st_size <= 0 or source.read_bytes()[:4] != b"%PDF":
+    if source.stat().st_size <= 0 or not has_pdf_signature(source):
         raise OcrFailure("PDF_OPEN_FAILED", "La carga temporal no contiene un PDF válido.")
     ocr_log("PDF encontrado")
     ocr_log(f"Tamaño válido: {source.stat().st_size} bytes")
@@ -323,6 +291,13 @@ def recognize(source: Path, session: Path) -> dict:
         for index, page in enumerate(document, start=1):
             ocr_log(f"Abriendo página {index}")
             ocr_log(f"Procesando página {index} de {document.page_count}")
+            embedded_text = page.get_text("text").strip()
+            if len(embedded_text) >= 80:
+                page_qr_codes = _detect_qr_pdf_page(source, index)
+                qr_codes.extend(page_qr_codes)
+                results.append({"pageNumber": index, "rawText": embedded_text, "normalizedText": embedded_text, "words": [], "averageConfidence": 100, "engine": "pdf-text", "language": "spa", "requiresReview": False, "qrCodes": page_qr_codes})
+                ocr_log(f"Página {index}: texto PDF existente conservado")
+                continue
             image = Path(temp) / f"page-{index:04}.png"
             try:
                 pixmap = page.get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
@@ -475,20 +450,22 @@ def _recognize_scanned_page(source: Path, page_number: int, executable: str, env
     # Fast pass first. Heavy variants are conditional, never unconditional.
     quick = _tesseract_candidate(executable, environment, image, page_dir / "quick", "original", 6)
     candidates = [quick] if quick else []
-    if not quick or len(quick["rawText"]) < 80 or quick["averageConfidence"] < 55:
+    if not quick or len(quick["rawText"]) < 50 or quick["averageConfidence"] < 42:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
-        for name, variant, psm in (("gray", gray, 3), ("clahe", clahe, 6)):
-            candidate = _tesseract_candidate(executable, environment, variant, page_dir / name, name, psm)
-            if candidate:
-                candidates.append(candidate)
-            if candidate and len(candidate["rawText"]) >= 120 and candidate["averageConfidence"] >= 65:
-                break
+        gray_candidate = _tesseract_candidate(executable, environment, gray, page_dir / "gray", "gray", 3)
+        if gray_candidate:
+            candidates.append(gray_candidate)
+        current = max(candidates, key=lambda item: item["score"]) if candidates else None
+        if not current or len(current["rawText"]) < 25 or current["averageConfidence"] < 28:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+            clahe_candidate = _tesseract_candidate(executable, environment, clahe, page_dir / "clahe", "clahe", 6)
+            if clahe_candidate:
+                candidates.append(clahe_candidate)
     if not candidates:
         return ({"pageNumber": page_number, "rawText": "", "normalizedText": "", "words": [], "averageConfidence": 0, "engine": "tesseract", "language": "spa", "requiresReview": True, "errorCode": "OCR_PAGE_EMPTY"}, qr_codes)
     best = max(candidates, key=lambda item: item["score"])
     # Directed header OCR only where notarial fields are most likely or the fast pass was weak.
-    if directed or best["averageConfidence"] < 55:
+    if directed and len(best["rawText"]) < 40 and best["averageConfidence"] < 35:
         height, width = image.shape[:2]
         header = image[:max(1, int(height * .22)), :]
         header = cv2.resize(header, None, fx=1.6, fy=1.6, interpolation=cv2.INTER_CUBIC)
@@ -501,17 +478,18 @@ def _recognize_scanned_page(source: Path, page_number: int, executable: str, env
 def recognize_hybrid(source: Path, session: Path) -> dict:
     started_at = time.perf_counter()
     session.mkdir(parents=True, exist_ok=True)
-    if not source.is_file() or source.stat().st_size <= 0 or source.read_bytes()[:4] != b"%PDF":
+    if not source.is_file() or source.stat().st_size <= 0 or not has_pdf_signature(source):
         raise OcrFailure("PDF_OPEN_FAILED", "La carga temporal no contiene un PDF válido.")
     document = fitz.open(source)
     total = document.page_count
     if total < 1:
         raise OcrFailure("PDF_OPEN_FAILED", "El PDF no contiene páginas.")
-    digital_pages, scanned_pages = [], []
+    digital_pages, scanned_pages, digital_page_numbers = [], [], []
     for index in range(total):
         text = document.load_page(index).get_text("text")
         if _useful_digital_text(text):
             digital_pages.append({"pageNumber": index + 1, "rawText": text, "normalizedText": " ".join(text.split()), "words": [], "averageConfidence": 100, "engine": "pymupdf-digital", "language": "spa", "requiresReview": False})
+            digital_page_numbers.append(index + 1)
         else:
             scanned_pages.append(index + 1)
     document.close()
@@ -519,14 +497,34 @@ def recognize_hybrid(source: Path, session: Path) -> dict:
     if scanned_pages and (not executable or not Path(executable).is_file()):
         raise OcrFailure("TESSERACT_NOT_FOUND", "No se encontró el ejecutable de Tesseract.")
     environment = os.environ.copy()
-    environment["TESSDATA_PREFIX"] = str(Path(__file__).with_name("tessdata"))
+    environment.setdefault("OMP_THREAD_LIMIT", "1")
+    bundled_tessdata = Path(__file__).with_name("tessdata")
+    # Desktop builds can bundle their own Spanish language data, while the
+    # Docker image installs it in Tesseract's system directory. Pointing
+    # TESSDATA_PREFIX at a non-existent bundled directory makes every OCR
+    # attempt fail even though tesseract-ocr-spa is installed in the image.
+    if (bundled_tessdata / "spa.traineddata").is_file():
+        environment["TESSDATA_PREFIX"] = str(bundled_tessdata)
+    else:
+        environment.pop("TESSDATA_PREFIX", None)
     results = list(digital_pages)
     qr_codes: list[dict] = []
+    if digital_page_numbers:
+        qr_workers = max(1, min(2, len(digital_page_numbers)))
+        with ThreadPoolExecutor(max_workers=qr_workers, thread_name_prefix="qr-page") as qr_executor:
+            qr_futures = {qr_executor.submit(_detect_qr_pdf_page, source, number): number for number in digital_page_numbers}
+            for qr_future in as_completed(qr_futures):
+                try:
+                    qr_codes.extend(qr_future.result())
+                except Exception as error:
+                    ocr_log(f"QR no legible en página {qr_futures[qr_future]}: {error}")
     processed, failed = len(digital_pages), 0
     progress_log(processed, total, started_at)
     workers = max(1, min(int(os.environ.get("OCR_PAGE_WORKERS", "0")) or max(1, (os.cpu_count() or 2) // 2), 4, len(scanned_pages) or 1))
     # First pages are submitted first for early notarial-field availability.
     ordered = sorted(scanned_pages, key=lambda number: (number > 3, number))
+    ocr_started_at = time.perf_counter()
+    ocr_processed = 0
     with tempfile.TemporaryDirectory(prefix="sigadn-hybrid-") as temp_name:
         temp = Path(temp_name)
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ocr-page") as executor:
@@ -543,8 +541,10 @@ def recognize_hybrid(source: Path, session: Path) -> dict:
                     failed += 1
                     results.append({"pageNumber": number, "rawText": "", "normalizedText": "", "words": [], "averageConfidence": 0, "engine": "tesseract-adaptive", "language": "spa", "requiresReview": True, "errorCode": "OCR_PAGE_FAILED", "error": str(error)[:300]})
                 processed += 1
-                progress_log(processed, total, started_at, failed)
+                ocr_processed += 1
+                progress_log(processed, total, started_at, failed, ocr_processed, len(scanned_pages), ocr_started_at)
     results.sort(key=lambda item: item["pageNumber"])
+    qr_codes.sort(key=lambda item: (int(item.get("pageNumber", 0)), str(item.get("qrRawValue", ""))))
     if not any(item.get("rawText", "").strip() for item in results):
         raise OcrFailure("OCR_RESULT_EMPTY", "Ninguna página produjo texto utilizable.")
     elapsed = time.perf_counter() - started_at
@@ -556,6 +556,7 @@ def main() -> None:
     parser.add_argument("command", choices=("preprocess", "recognize", "generate_clean_pdf"))
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--session", required=True, type=Path)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "preprocess":
@@ -564,7 +565,12 @@ def main() -> None:
             result = recognize_hybrid(args.source, args.session)
         else:
             result = generate_clean_pdf(args.session)
-        print(json.dumps(result, ensure_ascii=False))
+        serialized = json.dumps(result, ensure_ascii=False)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(serialized, encoding="utf-8")
+        else:
+            print(serialized)
     except OcrFailure as error:
         print(f"{error.code}: {error}", file=sys.stderr)
         raise SystemExit(2)

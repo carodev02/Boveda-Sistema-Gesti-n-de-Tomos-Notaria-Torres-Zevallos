@@ -1,9 +1,10 @@
 ﻿import {useEffect,useRef,useState} from 'react';
-import {BarChart3,Bell,BookOpen,Bot,CalendarDays,ChevronRight,FileText,KeyRound,LayoutDashboard,LogOut,Menu,MonitorSmartphone,Pencil,ScanLine,Search,Settings,Shield,UserRound,UsersRound,X} from 'lucide-react';
+import {BarChart3,BookOpen,Bot,CalendarDays,ChevronRight,FileText,KeyRound,LayoutDashboard,LogOut,Menu,MonitorSmartphone,Pencil,ScanLine,Search,Settings,Shield,UserRound,UsersRound,X} from 'lucide-react';
 import {NavLink,Outlet,useLocation,useNavigate} from 'react-router-dom';
 import {useAuth} from '../auth/AuthContext';
 import {userInitials} from '../data/roles';
 import {Brand} from './Brand';
+import {NotificationBell} from './NotificationBell';
 import './layout.css';
 
 const nav=[['/dashboard','Dashboard',LayoutDashboard],['/digitalizacion','Centro Digitalización',ScanLine],['/documentos','Gestión Documental',FileText],['/tomos','Gestión de Tomos',BookOpen],['/asistente','Asistente IA',Bot],['/usuarios','Usuarios',UsersRound],['/reportes','Reportes',BarChart3],['/auditoria','Auditoría',Shield]] as const;
@@ -49,7 +50,7 @@ export function AppLayout(){
       <div className="sideBrand"><Brand/><ChevronRight size={17}/></div>
       <nav>
         {visibleNav.map(([to,label,Icon])=><NavLink key={to} to={to} onClick={()=>setMobileNavOpen(false)} className={({isActive})=>isActive?'active':''}><Icon size={19}/><span>{label}</span>{to==='/digitalizacion'&&<em>Principal</em>}</NavLink>)}
-        {user.role==='Administrador'&&<NavLink to="/configuracion" onClick={()=>setMobileNavOpen(false)} className={({isActive})=>isActive?'active':''}><Settings size={19}/><span>Configuración</span></NavLink>}
+        {['Administrador','Notario'].includes(user.role)&&<NavLink to="/configuracion" onClick={()=>setMobileNavOpen(false)} className={({isActive})=>isActive?'active':''}><Settings size={19}/><span>Configuración</span></NavLink>}
       </nav>
       <div className="sideBottom">
         <label>ROL ACTIVO</label><div className="role">{user.role}</div>
@@ -60,7 +61,7 @@ export function AppLayout(){
       </div>
     </aside>
     <main className="main">
-      <header className="topbar"><button className="mobileMenuButton" aria-label={mobileNavOpen?'Cerrar menú':'Abrir menú'} onClick={()=>setMobileNavOpen(value=>!value)}>{mobileNavOpen?<X size={20}/>:<Menu size={20}/>}</button><div><h1>{titles[key]}</h1><span>Bóveda · Notaría Torres Zevallos</span></div><div className="topActions"><form className="search" onSubmit={submitSearch}><Search size={15}/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar archivos reales..."/><kbd>↵</kbd></form><button className="notificationButton" title="Estado del almacenamiento" onClick={()=>window.alert('Los PDF se consultan desde el almacenamiento del servidor.')}><Bell size={18}/></button><div className="date"><CalendarDays size={15}/>{new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(currentDate)} · {new Intl.DateTimeFormat('es-PE',{hour:'numeric',minute:'2-digit',hour12:true}).format(currentDate)}</div></div></header>
+      <header className="topbar"><button className="mobileMenuButton" aria-label={mobileNavOpen?'Cerrar menú':'Abrir menú'} onClick={()=>setMobileNavOpen(value=>!value)}>{mobileNavOpen?<X size={20}/>:<Menu size={20}/>}</button><div><h1>{titles[key]}</h1><span>Bóveda · Notaría Torres Zevallos</span></div><div className="topActions"><form className="search" onSubmit={submitSearch}><Search size={15}/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar archivos reales..."/><kbd>↵</kbd></form><NotificationBell/><div className="date"><CalendarDays size={15}/>{new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(currentDate)} · {new Intl.DateTimeFormat('es-PE',{hour:'numeric',minute:'2-digit',hour12:true}).format(currentDate)}</div></div></header>
       <Outlet/>
     </main>
   </div>;

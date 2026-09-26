@@ -1,17 +1,18 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {BookOpen,CalendarDays,ChevronDown,ChevronRight,FileKey2,FileText,FileType2,Pencil,X} from 'lucide-react';
 import {useNavigate} from 'react-router-dom';
+import {useAuth} from '../auth/AuthContext';
 import {useDocuments} from '../hooks/useDocuments';
 import {updateDocumentTypeGroup,updateTomeNumber} from '../services/documentsApi';
-import {buildTomeHierarchy} from '../services/tomeHierarchy';
+import {buildTomeHierarchy,type TomePeriodScope} from '../services/tomeHierarchy';
 import './tomos.css';
 import './tomos-edit.css';
 
 const OPEN_KEY='sigadn-tomos-open-v1';
 const SCROLL_KEY='sigadn-tomos-scroll-v1';
 
-type TomeEdit={year:number;current:string;next:string};
-type TypeEdit={year:number;tome:string;current:string;next:string};
+type TomeEdit={period:TomePeriodScope;current:string;next:string};
+type TypeEdit={period:TomePeriodScope;tome:string;current:string;next:string};
 
 function initialOpen(){
  try{return JSON.parse(sessionStorage.getItem(OPEN_KEY)??'{}') as Record<string,boolean>}
@@ -20,6 +21,8 @@ function initialOpen(){
 
 export function Tomos(){
  const navigate=useNavigate();
+ const {user}=useAuth();
+ const canManageStructure=user?.role==='Administrador'||user?.role==='Notario';
  const {documents,loading,error,refresh}=useDocuments();
  const [open,setOpen]=useState<Record<string,boolean>>(initialOpen);
  const [editing,setEditing]=useState<TomeEdit>();
@@ -45,21 +48,21 @@ export function Tomos(){
   });
  }
 
- function view(id:number){
+ function view(id:number|string){
   sessionStorage.setItem(OPEN_KEY,JSON.stringify(open));
   sessionStorage.setItem(SCROLL_KEY,String(window.scrollY));
   navigate(`/visor/${id}`,{state:{from:'/tomos'}});
  }
 
- function editTome(year:number,current:string){
+ function editTome(period:TomePeriodScope,current:string){
   setTypeEditing(undefined);
-  setEditing({year,current,next:current});
+  setEditing({period,current,next:current});
   setEditError('');
  }
 
- function editType(year:number,tome:string,current:string){
+ function editType(period:TomePeriodScope,tome:string,current:string){
   setEditing(undefined);
-  setTypeEditing({year,tome,current,next:current});
+  setTypeEditing({period,tome,current,next:current});
   setEditError('');
  }
 
@@ -79,7 +82,7 @@ export function Tomos(){
   setSaving(true);
   setEditError('');
   try{
-   await updateTomeNumber(editing.year,editing.current,next);
+   await updateTomeNumber(editing.period,editing.current,next);
    setEditing(undefined);
    await refresh();
   }catch(cause){
@@ -99,7 +102,7 @@ export function Tomos(){
   setSaving(true);
   setEditError('');
   try{
-   await updateDocumentTypeGroup(typeEditing.year,typeEditing.tome,typeEditing.current,next);
+   await updateDocumentTypeGroup(typeEditing.period,typeEditing.tome,typeEditing.current,next);
    setTypeEditing(undefined);
    await refresh();
   }catch(cause){
@@ -120,15 +123,15 @@ export function Tomos(){
   <section className="card yearList">
    {loading?<div className="emptyTomo">Cargando organización documental…</div>:error?<div className="emptyTomo"><p>No se pudo cargar la organización documental.</p><button className="btn" onClick={()=>void refresh()}>Reintentar</button></div>:groups.map(group=><TreeNode key={group.key} nodeKey={group.key} open={open} toggle={toggle} icon={<CalendarDays/>} title={group.label} subtitle={`${group.tomes.length} ${group.tomes.length===1?'tomo':'tomos'}`} level="year">
     {group.tomes.map(tome=>{
-     const editYear=group.key.startsWith('year:')&&group.sortValue>0?group.sortValue:undefined;
+     const editablePeriod=canManageStructure?group.scope:undefined;
      const documentCount=tome.kardexCases.reduce((sum,kardex)=>sum+kardex.categories.reduce((count,item)=>count+item.documents.length,0),0);
-     return <TreeNode key={tome.key} nodeKey={tome.key} open={open} toggle={toggle} icon={<BookOpen/>} title={tome.label} subtitle={`${tome.kardexCases.length} ${tome.kardexCases.length===1?'Kardex':'Kardex'} · ${documentCount} ${documentCount===1?'documento':'documentos'}`} level="tome" onEdit={editYear&&tome.value!=='unknown'?()=>editTome(editYear,tome.value):undefined} editTitle="Editar número de tomo">
+     return <TreeNode key={tome.key} nodeKey={tome.key} open={open} toggle={toggle} icon={<BookOpen/>} title={tome.label} subtitle={`${tome.kardexCases.length} ${tome.kardexCases.length===1?'Kardex':'Kardex'} · ${documentCount} ${documentCount===1?'documento':'documentos'}`} level="tome" onEdit={editablePeriod&&tome.value!=='unknown'?()=>editTome(editablePeriod,tome.value):undefined} editTitle="Editar número de tomo">
       {tome.kardexCases.map(kardex=><TreeNode key={kardex.key} nodeKey={kardex.key} open={open} toggle={toggle} icon={<FileKey2/>} title={kardex.label} subtitle={kardex.status} level="kardex">
        {kardex.categories.map(item=>{
         const key=`${kardex.key}/category:${item.name}`;
         const editableType=item.sourceTypes.length===1?item.sourceTypes[0]:undefined;
-        return <TreeNode key={key} nodeKey={key} open={open} toggle={toggle} icon={<FileType2/>} title={item.name} subtitle={`${item.documents.length} ${item.documents.length===1?'documento':'documentos'}`} level="category" onEdit={editYear&&tome.value!=='unknown'&&editableType?()=>editType(editYear,tome.value,editableType):undefined} editTitle="Editar tipo documental">
-         {item.documents.map(({document,label,exactFolio,requiresReview})=><button className="tomePdf" key={document.backendId??document.id} onClick={()=>view(document.id)}><FileText/><span>{label}</span>{exactFolio!=null&&<small className="exactFolio">Foja {exactFolio}</small>}{requiresReview&&<small>Requiere revisión</small>}</button>)}
+        return <TreeNode key={key} nodeKey={key} open={open} toggle={toggle} icon={<FileType2/>} title={item.name} subtitle={`${item.documents.length} ${item.documents.length===1?'documento':'documentos'}`} level="category" onEdit={editablePeriod&&tome.value!=='unknown'&&editableType?()=>editType(editablePeriod,tome.value,editableType):undefined} editTitle="Editar tipo documental">
+         {item.documents.map(({document,label,exactFolio,requiresReview})=><button className="tomePdf" key={document.backendId??document.id} onClick={()=>view(document.backendId??document.id)}><FileText/><span>{label}</span>{exactFolio!=null&&<small className="exactFolio">Foja {exactFolio}</small>}{requiresReview&&<small>Requiere revisión</small>}</button>)}
         </TreeNode>;
        })}
       </TreeNode>)}

@@ -1,8 +1,11 @@
 import {describe,expect,it} from 'vitest';
-import {kardexPeriodKey,normalizeKardex} from '../src/services/kardex-case.service';
+import {kardexPeriodKey,kardexStatusAfterDeletion,normalizeKardex} from '../src/services/kardex-case.service';
 
 describe('normalización de KardexCase',()=>{
  it.each([['41245','41245'],['K41245','41245'],['K-41245','41245'],['KARDEX 41245','41245'],['Kardex N.º 41245','41245'],['0041245','41245'],['KARDEX 41O45','41045'],['K12A','K12A']])('normaliza %s', (input,expected)=>expect(normalizeKardex(input)).toBe(expected));
  it('usa año como periodo',()=>expect(kardexPeriodKey({year:2026,tomeNumber:'80'})).toBe('2026'));
  it('usa bienio como periodo',()=>expect(kardexPeriodKey({bienniumStart:1994,bienniumEnd:1995,tomeNumber:'1'})).toBe('1994-1995'));
+ it('reconoce una Solicitud independiente como origen pendiente de Registro Notarial',()=>expect(kardexStatusAfterDeletion(['Solicitud'])).toBe('Falta Registro Notarial'));
+ it('completa la relación Solicitud más Registro Notarial',()=>expect(kardexStatusAfterDeletion(['Solicitud','Escrituras públicas'])).toBe('Relación completa'));
+ it('mantiene válido el flujo Minuta más Registro Notarial',()=>expect(kardexStatusAfterDeletion(['Minuta','Escrituras públicas'])).toBe('Relación completa'));
 });

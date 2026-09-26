@@ -9,7 +9,7 @@
   .main{margin-left:0;width:100%}.mobileMenuButton{display:grid;place-items:center;border:0;background:transparent;color:var(--text);padding:6px;margin-right:6px}
   .topbar{min-height:var(--topbar);height:auto;padding:8px 12px;gap:8px}.topbar>div:first-of-type{min-width:0}.topbar h1{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.topActions{gap:6px;margin-left:auto}.topActions .search{width:min(245px,34vw)}.date{font-size:10px;padding:0 8px}.notificationButton{display:none}
   .attentionGrid,.statsGrid{grid-template-columns:repeat(2,1fr)}.charts,.reportCharts,.configurationGrid,.profileGrid{grid-template-columns:1fr}.profileGrid{max-width:700px}.tomoStats{grid-template-columns:repeat(3,1fr)}.configGrid,.metadataGrid{grid-template-columns:repeat(2,1fr)!important}.historicalGrid{grid-template-columns:repeat(2,1fr)!important}.featureGrid{grid-template-columns:repeat(3,1fr)}
-  .assistantLayout{grid-template-columns:1fr}.assistantHistory{display:none}.assistantMain{min-height:calc(100vh - var(--topbar) - 32px)}
+  .assistantLayout{grid-template-columns:1fr}.assistantHistory{display:flex;max-height:160px;overflow:auto}.assistantHistory .grounding{display:none}.assistantMain{min-height:calc(100vh - var(--topbar) - 32px)}
 }
 @media(max-width:640px){
   .page-content{padding:12px}.topbar{align-items:flex-start}.topbar>div:first-of-type{flex:1}.topActions{flex:0 0 auto}.topActions .search{width:38px;padding:0 10px}.topActions .search input,.topActions .search kbd{display:none}.date{display:none}

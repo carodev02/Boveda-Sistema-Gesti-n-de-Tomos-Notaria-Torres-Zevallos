@@ -18,5 +18,10 @@ export async function listAudit(req:Request,res:Response){
   },include:{user:{select:{username:true,email:true,fullName:true,role:true,status:true,deletedAt:true}}},orderBy:{createdAt:'desc'},take:500});
   res.json(rows);
 }
+export async function listRecentAudit(req:Request,res:Response){
+  const global=([Role.NOTARIO,Role.ADMINISTRADOR] as Role[]).includes(req.auth!.role);
+  const rows=await prisma.auditEvent.findMany({where:global?{}:{userId:req.auth!.userId},include:{user:{select:{username:true,email:true,fullName:true,role:true,status:true,deletedAt:true}}},orderBy:{createdAt:'desc'},take:5});
+  res.json(rows);
+}
 export async function auditStats(_req:Request,res:Response){const activeUsers=await prisma.user.count({where:{status:UserStatus.ACTIVO,deletedAt:null}});res.json({activeUsers})}
 export async function getAudit(req:Request,res:Response){const event=await prisma.auditEvent.findUniqueOrThrow({where:{id:String(req.params.id)},include:{user:{select:{username:true,email:true,fullName:true,role:true,status:true,deletedAt:true}}}});if(!([Role.NOTARIO,Role.ADMINISTRADOR] as Role[]).includes(req.auth!.role)&&event.userId!==req.auth!.userId){res.status(403).json({error:'No puede consultar actividad de otros usuarios.'});return}res.json(event)}

@@ -4,6 +4,7 @@ import {Ban,CheckCircle2,Edit3,Eye,KeyRound,Lock,MoreHorizontal,Plus,Search,Shie
 import {useAuth} from '../auth/AuthContext';
 import {roles,type Role} from '../data/roles';
 import {usersApi,type AccountStatus,type UserAccount} from '../services/usersApi';
+import {addNotification} from '../services/notifications';
 import './users.css';
 import './users-pending.css';
 
@@ -57,7 +58,7 @@ export function Usuarios(){
         if(created.temporaryPassword)setNotice(`Cuenta creada. Contraseña temporal: ${created.temporaryPassword}`);
       }else if(action==='edit'&&selected)await usersApi.update(selected.id,form);
       else if(action==='role'&&selected)await usersApi.changeRole(selected.id,newRole,reason);
-      else if(action==='delete'&&selected){await usersApi.remove(selected.id,reason);setNotice('Cuenta eliminada correctamente.');}
+      else if(action==='delete'&&selected){await usersApi.remove(selected.id,reason);setNotice('Cuenta eliminada correctamente.');addNotification('delete','Cuenta eliminada',`${selected.fullName} · ${selected.email}`);}
       else if(selected&&['reset-password','activate','deactivate','block','unblock','reject'].includes(action)){
         const result=await usersApi.action(selected.id,action as 'reset-password'|'activate'|'deactivate'|'block'|'unblock'|'reject',reason);
         if(action==='reset-password'&&'temporaryPassword' in result)setNotice(`Contraseña restablecida. Contraseña temporal: ${result.temporaryPassword}`);

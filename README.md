@@ -66,6 +66,14 @@ En Windows, abra Docker Desktop y ejecute `CONFIGURAR-SERVIDOR-DOCKER.bat` como 
 
 Las estaciones se configuran ejecutando `CONFIGURAR-ESTACION-BOVEDA.bat` e indicando la URL fija del servidor, por ejemplo `http://192.168.10.141:4000`.
 
+## Actualizar la aplicacion de Windows
+
+La actualizacion interna usa `ACTUALIZAR-BOVEDA.bat` y `actualizar-boveda.ps1`. La carpeta `actualizacion/` debe contener `Boveda-NTZ.exe` y `release.json` preparados a partir de una compilacion nueva. No necesita ejecutar el instalador de Windows ni modificar Docker.
+
+En la PC que se actualiza, cierre Boveda y termine cualquier digitalizacion en curso. Ejecute el BAT. El script verifica SHA-256, encuentra la instalacion existente, guarda una copia del ejecutable anterior y reemplaza solamente el ejecutable de la aplicacion. Si la copia o la verificacion falla, restaura ese archivo. No modifica PostgreSQL, `backend/storage`, los PDF ni la configuracion de la estacion.
+
+Si tambien cambia la API central, se necesita una actualizacion de servidor por separado, con respaldo previo de PostgreSQL y `backend/storage`. No ejecute el BAT de servidor mientras haya cargas en curso.
+
 `RESTAURAR-DATOS-SERVIDOR-DOCKER.bat` acepta una copia externa con esta estructura:
 
 ```text

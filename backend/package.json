@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "repair:mojibake": "tsx prisma/repair-mojibake.ts"
+    "repair:mojibake": "tsx prisma/repair-mojibake.ts",
+    "migrate:legacy-documents": "tsx prisma/migrate-legacy-document-files.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

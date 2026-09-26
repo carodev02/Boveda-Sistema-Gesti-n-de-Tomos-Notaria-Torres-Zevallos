@@ -1,7 +1,7 @@
 export type NormalizedFilenameInput={
   contractor?:string;
   kardexNumber?:string;
-  documentClass:'MINUTA'|'REGISTRO_NOTARIAL';
+  documentClass:'MINUTA'|'REGISTRO_NOTARIAL'|'SOLICITUD';
   instrumentNumber?:string;
   existingNames?:Iterable<string>;
 };

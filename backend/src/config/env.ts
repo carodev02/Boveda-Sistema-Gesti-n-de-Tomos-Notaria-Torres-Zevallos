@@ -13,7 +13,8 @@ const schema=z.object({
   MAX_FAILED_LOGIN_ATTEMPTS:z.coerce.number().int().positive().default(5),
   COOKIE_SECURE:z.string().default('false').transform(value=>value==='true')
   ,STORAGE_ROOT:z.string().default('storage'),
-  VISION_ROOT:z.string().default('../src-tauri/vision')
+  VISION_ROOT:z.string().default('../src-tauri/vision'),
+  MAX_PDF_UPLOAD_MB:z.coerce.number().int().min(1).max(500).default(200)
 });
 
 export const env=schema.parse(process.env);

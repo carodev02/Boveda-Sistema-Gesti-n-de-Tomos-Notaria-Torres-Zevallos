@@ -1,6 +1,6 @@
-/* El historial de consultas no forma parte de la experiencia visible de Bóveda. */
-.assistantLayout{grid-template-columns:minmax(0,1fr);max-width:1120px}
-.assistantHistory{display:none}
+/* Las conversaciones se conservan al cambiar de vista. */
+.assistantLayout{grid-template-columns:230px minmax(0,1fr);max-width:1250px}
+.assistantHistory{display:flex}
 .assistantMain{width:100%}
 .assistantConversation{padding-left:40px;padding-right:40px}
 .assistantSearchHome{overflow:auto}
@@ -17,7 +17,13 @@
 .assistantExampleGrid button{background:#fff;min-height:52px;font-size:13px}
 .assistantSearchHome .assistantExchange{margin-top:22px}
 .assistantSearchHome .assistantWarning{margin-top:auto;padding-top:14px}
+.assistantHistory .assistantNewChat{background:var(--gold);color:#fff;justify-content:center;align-items:center;font-size:11px;font-weight:700;margin-top:16px}
+.assistantHistory>button.active{background:var(--champagne);color:var(--title);font-weight:700}
+.assistantChatExchanges{width:100%;min-height:0;overflow:auto;max-height:45vh;padding:0 4px}
+.assistantChatExchanges .assistantExchange{margin:20px auto 0}
+.assistantSearchHome{min-height:0}
 
 @media (max-width:900px){
+  .assistantLayout{grid-template-columns:1fr}.assistantHistory{display:flex;max-height:160px;overflow:auto}.assistantHistory .grounding{display:none}
   .assistantConversation{padding-left:20px;padding-right:20px}
 }

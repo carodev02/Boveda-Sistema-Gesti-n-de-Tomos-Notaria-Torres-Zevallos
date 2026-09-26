@@ -1,0 +1,16 @@
+import {describe,expect,it} from 'vitest';
+import {answerDocumentQuestion} from '../../src/services/documentAssistant';
+import type {DocumentRecord} from '../../src/data/repository';
+
+const document=(id:number,values:Partial<DocumentRecord>):DocumentRecord=>({id,backendId:`00000000-0000-4000-8000-${String(id).padStart(12,'0')}`,documentMode:'actual',tipo:'Escrituras públicas',ano:2000,tomo:'1',numeroMinuta:'',actoJuridico:'Compraventa',kardex:String(id),escritura:String(id),contratantes:['PERSONA'],observaciones:'',fecha:'',fechaRegistro:'2026-01-01',cantidadPaginas:1,documento:'CONFIRMED',ocr:'PROCESSED',fileName:`documento-${id}.pdf`,fileSize:1,file:new Blob([], {type:'application/pdf'}),source:'manual',...values});
+const documents=[document(1,{kardex:'111',normalizedKardex:'111',tipo:'Minuta',numeroMinuta:'50'}),document(2,{kardex:'112',normalizedKardex:'112',qrUrl:'https://example.test/qr'}),document(3,{kardex:'1110',normalizedKardex:'1110',tomo:'2'}),document(4,{ano:2001,kardex:'200',normalizedKardex:'200',tomo:'3'})];
+
+describe('consultas documentales del asistente',()=>{
+ it('lista los kardex exactos de un tomo',()=>{const result=answerDocumentQuestion('dame los kardex del tomo 1',documents);expect(result.results.map(item=>item.kardex)).toEqual(['111','112']);expect(result.answer).toContain('111, 112')});
+ it('cuenta los tomos distintos de un año',()=>expect(answerDocumentQuestion('cuantos tomos hay en el año 2000',documents).answer).toContain('2 tomos'));
+ it('encuentra la minuta de un kardex sin confundir 111 con 1110',()=>{const result=answerDocumentQuestion('Minuta del kardex 111',documents);expect(result.results).toHaveLength(1);expect(result.results[0].tipo).toBe('Minuta')});
+ it('identifica documentos sin QR',()=>expect(answerDocumentQuestion('dime cuáles no tienen QR',documents).results.map(item=>item.kardex)).toEqual(['111','1110','200']));
+ it('combina sin QR con el año solicitado y no cuenta todo el repositorio',()=>{const result=answerDocumentQuestion('cuáles no tienen QR en el 2000?',documents);expect(result.results.map(item=>item.kardex)).toEqual(['111','1110']);expect(result.answer).toContain('en el año 2000')});
+ it('identifica kardex que tienen minuta pero les falta acta',()=>{const result=answerDocumentQuestion('qué kardex faltan con actas',documents);expect(result.results.map(item=>item.kardex)).toEqual(['111']);expect(result.answer).toContain('sin acta')});
+ it('combina la falta de minuta con el año solicitado',()=>expect(answerDocumentQuestion('dime cuáles están sin minuta en el año 2000',documents).results.map(item=>item.kardex)).toEqual(['112','1110']));
+});

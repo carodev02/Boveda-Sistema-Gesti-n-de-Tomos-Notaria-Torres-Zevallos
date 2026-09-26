@@ -1,4 +1,4 @@
-export type DocumentClass='MINUTA'|'REGISTRO_NOTARIAL';
+export type DocumentClass='MINUTA'|'REGISTRO_NOTARIAL'|'SOLICITUD';
 export type ProcessingStatus='PENDING'|'PROCESSING'|'COMPLETED'|'FAILED';
 export type StorageStatus='TEMPORARY'|'PENDING_ARCHIVE'|'ARCHIVED'|'FAILED';
 

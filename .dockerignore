@@ -11,5 +11,6 @@ src-tauri/target
 src-tauri/vision/runtime
 src-tauri/vision/.venv
 backend/storage
+respaldo-actualizacion-*
 backend/.env
 servidor-docker.env

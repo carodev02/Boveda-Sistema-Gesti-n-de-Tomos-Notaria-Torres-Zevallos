@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rootDir": "../..",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": false,
+    "noUncheckedIndexedAccess": false,
+    "types": ["node", "vitest/globals", "vite/client"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": []
+}

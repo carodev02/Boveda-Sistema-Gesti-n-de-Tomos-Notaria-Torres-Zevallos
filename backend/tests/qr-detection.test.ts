@@ -22,7 +22,18 @@ describe('extracción QR dedicada',()=>{
     const source=readFileSync(new URL('../../src/pages/DigitalizacionProcess.tsx',import.meta.url),'utf8');
     expect(source).toContain('values.qrUrl &&');
     expect(source).toContain('qrRawValue&&');
+    expect(source.match(/label="URL de QR"/g)).toHaveLength(3);
     expect(source).not.toContain('Agregar URL de QR');
+  });
+  it('busca el QR a resolucion documental, en todas las rotaciones y tambien en paginas digitales',()=>{
+    const source=readFileSync(new URL('../../src-tauri/vision/processor.py',import.meta.url),'utf8');
+    expect(source).toContain('detectAndDecodeMulti(candidate)');
+    expect(source).toContain('(90, cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE))');
+    expect(source).toContain('(180, cv2.rotate(image, cv2.ROTATE_180))');
+    expect(source).toContain('(270, cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE))');
+    expect(source).toContain('def _detect_qr_pdf_page(source: Path, page_number: int)');
+    expect(source).toContain('qr_executor.submit(_detect_qr_pdf_page, source, number)');
+    expect(source).not.toContain('scale = min(1.0, 960.0 / longest_edge)');
   });
   it('presenta el enlace QR persistido en la información documental',()=>{
     const source=readFileSync(new URL('../../src/pages/Visor.tsx',import.meta.url),'utf8');

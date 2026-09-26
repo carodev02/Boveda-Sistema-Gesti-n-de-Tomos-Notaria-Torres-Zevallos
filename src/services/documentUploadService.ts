@@ -1,26 +1,34 @@
 import {czurDesktop} from './czurDesktop';
 import {apiRequest} from './apiClient';
 
-export type ScanUploadMetadata={sessionId?:string;documentClass:string;registryTypeId?:string;tomeNumber?:string;folioRangeStart?:number;folioRangeEnd?:number;year?:number;bienniumStart?:number;bienniumEnd?:number;file?:Blob};
+export type ScanUploadMetadata={sessionId?:string;documentClass:string;registryTypeId?:string;tomeNumber?:string;folioRangeStart?:number;folioRangeEnd?:number;year?:number;bienniumStart?:number;bienniumEnd?:number;pageCount?:number;file?:Blob};
 export type ScanUploadResult={uploadId:string;jobId?:string;documentId?:string;status:string;pageCount:number;sha256?:string};
 const trace=(message:string,detail?:unknown)=>{if(import.meta.env.DEV)console.debug(`[PROCESS] ${message}`,detail??'')};
 const timeout=<T>(promise:Promise<T>,milliseconds:number,message:string)=>new Promise<T>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(message)),milliseconds);promise.then(value=>{clearTimeout(timer);resolve(value)},error=>{clearTimeout(timer);reject(error)})});
+// Large scanned deeds can contain hundreds of image-heavy pages. Reading the
+// clean PDF through Tauri and sending it over a busy LAN must not impose a page
+// boundary disguised as a short timeout.
+export const LARGE_PDF_OPERATION_TIMEOUT_MS=20*60*1000;
 function toBytes(value:unknown){if(value instanceof Uint8Array)return value;if(Array.isArray(value))return Uint8Array.from(value);if(value&&typeof value==='object'&&Array.isArray((value as {data?:unknown}).data))return Uint8Array.from((value as {data:number[]}).data);throw new Error('No se pudo leer el PDF preparado.')}
+async function readCleanPdfInChunks(sessionId:string){
+  const chunkSize=2*1024*1024;const chunks:Uint8Array[]=[];let offset=0;let size=0;
+  do{const chunk=await timeout(czurDesktop.readCleanPdfChunk(sessionId,offset,chunkSize),LARGE_PDF_OPERATION_TIMEOUT_MS,'No se pudo leer un bloque del PDF preparado.');const bytes=toBytes(chunk.bytes);if(!bytes.length)throw new Error('El lector devolvió un bloque vacío del PDF.');chunks.push(bytes);offset+=bytes.length;size=chunk.size}while(offset<size);
+  return new Blob(chunks.map(bytes=>bytes.slice().buffer),{type:'application/pdf'});
+}
 export async function uploadCleanPdfFromSession(metadata:ScanUploadMetadata):Promise<ScanUploadResult>{
   trace('Leyendo PDF limpio');
   let blob:Blob;
   if(metadata.file)blob=metadata.file;
   else{
     if(!metadata.sessionId)throw new Error('No se pudo leer el PDF preparado.');
-    const raw=await timeout(czurDesktop.readCleanPdf(metadata.sessionId),15000,'No se pudo leer el PDF preparado.');
-    const bytes=toBytes(raw);const copy=new Uint8Array(bytes.length);copy.set(bytes);
-    blob=new Blob([copy.buffer],{type:'application/pdf'});
+    blob=await readCleanPdfInChunks(metadata.sessionId);
   }
   const signature=new TextDecoder('ascii').decode(new Uint8Array(await blob.slice(0,5).arrayBuffer()));
   trace(`Bytes recibidos: ${blob.size}`);
   if(!blob.size||signature!=='%PDF-')throw new Error('No se pudo leer el PDF preparado.');
-  const form=new FormData();form.append('file',blob,'document-clean.pdf');for(const [key,value] of Object.entries(metadata))if(key!=='file'&&value!==undefined)form.append(key,String(value));
-  trace('Iniciando upload multipart');
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),30000);
-  try{return await apiRequest<ScanUploadResult>('/documents/uploads/from-scan',{method:'POST',body:form,signal:controller.signal})}finally{clearTimeout(timer)}
+  trace('Iniciando upload binario directo');
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),LARGE_PDF_OPERATION_TIMEOUT_MS);
+  const headers:Record<string,string>={'Content-Type':'application/pdf','x-file-name':encodeURIComponent('document-clean.pdf')};
+  if(metadata.pageCount&&Number.isInteger(metadata.pageCount))headers['x-page-count']=String(metadata.pageCount);
+  try{return await apiRequest<ScanUploadResult>('/documents/uploads/from-scan',{method:'POST',headers,body:blob,signal:controller.signal})}finally{clearTimeout(timer)}
 }
