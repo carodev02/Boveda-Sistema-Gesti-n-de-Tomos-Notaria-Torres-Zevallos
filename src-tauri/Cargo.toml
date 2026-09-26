@@ -1,6 +1,6 @@
 [package]
 name = "sigadn-desktop"
-version = "0.1.6"
+version = "0.1.7"
 description = "SIGADN Desktop"
 authors = ["Notaría Torres Zevallos"]
 edition = "2021"

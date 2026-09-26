@@ -80,7 +80,7 @@ export function AsistenteIA(){
   try{
    let results:DocumentRecord[];let answer:string;
    if(scopedId){results=findDocuments(question,documents,scopedId);answer=answerFor(question,results,documents.length,scopedId)}
-   else{const local=answerDocumentQuestion(question,documents);results=local.results;answer=local.answer;if(!results.length&&!/\b(como|ayuda|pasos|explica)\b/.test(normalize(question))){const ocr=await searchDocumentOcr(question).catch(()=>undefined);if(ocr?.matches.length){const matched=new Set(ocr.matches.map(item=>item.documentId));results=documents.filter(document=>document.backendId&&matched.has(document.backendId));answer=ocr.answer}}}
+   else{const local=answerDocumentQuestion(question,documents);results=local.results;answer=local.answer;if(!results.length&&local.searchOcr){const ocr=await searchDocumentOcr(question).catch(()=>({answer:'No pude consultar el texto OCR en este momento. Inténtalo nuevamente o busca por nombre, kardex o escritura.',matches:[]}));if(ocr){const matched=new Set(ocr.matches.map(item=>item.documentId));results=documents.filter(document=>document.backendId&&matched.has(document.backendId));answer=ocr.answer}}}
    const exchange={question,answer,ids:results.slice(0,30).map(doc=>doc.id)};
    const id=activeId||crypto.randomUUID();
    setChats(current=>{const existing=current.find(chat=>chat.id===id);return [{id,exchanges:[...(existing?.exchanges??[]),exchange]},...current.filter(chat=>chat.id!==id)].slice(0,12)});
